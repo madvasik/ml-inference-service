@@ -57,9 +57,9 @@ def test_execute_prediction_success(
     mock_predict.return_value = {"prediction": [0.85]}
     mock_deduct_credits.return_value = True
     
-    # Создаем задачу
+    # Создаем задачу и мокируем db через _db
     task = execute_prediction
-    task.db = mock_db
+    task._db = mock_db
     
     # Выполняем задачу
     result = task.run(
@@ -90,9 +90,9 @@ def test_execute_prediction_model_not_found(
         None  # Для model - не найдена
     ]
     
-    # Создаем задачу
+    # Создаем задачу и мокируем db через _db
     task = execute_prediction
-    task.db = mock_db
+    task._db = mock_db
     
     # Выполняем задачу
     result = task.run(
@@ -132,9 +132,9 @@ def test_execute_prediction_insufficient_credits(
     mock_predict.return_value = {"prediction": [0.85]}
     mock_deduct_credits.return_value = False  # Недостаточно кредитов
     
-    # Создаем задачу
+    # Создаем задачу и мокируем db через _db
     task = execute_prediction
-    task.db = mock_db
+    task._db = mock_db
     
     # Выполняем задачу
     result = task.run(

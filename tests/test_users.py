@@ -28,4 +28,5 @@ def test_get_current_user(client, test_user):
 def test_get_current_user_unauthorized(client):
     """Тест получения информации без авторизации"""
     response = client.get("/api/v1/users/me")
-    assert response.status_code == status.HTTP_403_FORBIDDEN
+    # HTTPBearer возвращает 401 когда нет токена, а не 403
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED

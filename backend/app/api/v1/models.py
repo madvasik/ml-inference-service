@@ -1,5 +1,5 @@
 import os
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from backend.app.api.deps import get_current_user
 from backend.app.database.session import get_db
@@ -14,7 +14,7 @@ router = APIRouter()
 
 @router.post("/upload", response_model=MLModelResponse, status_code=status.HTTP_201_CREATED)
 def upload_model(
-    model_name: str,
+    model_name: str = Form(...),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)

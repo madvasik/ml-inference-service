@@ -76,9 +76,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return True, remaining
     
     async def dispatch(self, request: Request, call_next):
-        # Пропускаем метрики, health check и документацию
-        if request.url.path in ["/metrics", "/health", "/", "/docs", "/openapi.json", "/redoc"]:
-            return await call_next(request)
+        # Пропускаем метрики, health check и документацию (но все равно добавляем заголовки)
+        is_excluded = request.url.path in ["/metrics", "/health", "/", "/docs", "/openapi.json", "/redoc"]
         
         # Периодическая очистка
         self._cleanup_old_entries()
@@ -91,6 +90,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             limit = settings.rate_limit_per_user_per_minute
         else:
             limit = settings.rate_limit_per_minute
+        
+        # Для исключенных endpoints не проверяем лимит, но все равно добавляем заголовки
+        if is_excluded:
+            response = await call_next(request)
+            # Добавляем заголовки rate limit даже для исключенных endpoints
+            response.headers["X-RateLimit-Limit"] = str(limit)
+            response.headers["X-RateLimit-Remaining"] = str(limit)  # Для исключенных endpoints всегда полный лимит
+            response.headers["X-RateLimit-Reset"] = str(int(time.time()) + 60)
+            return response
         
         allowed, remaining = self._check_rate_limit(key, limit)
         

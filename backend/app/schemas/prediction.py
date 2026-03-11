@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from backend.app.models.prediction import PredictionStatus
 
 
@@ -19,8 +19,7 @@ class PredictionResponse(BaseModel):
     credits_spent: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PredictionList(BaseModel):
