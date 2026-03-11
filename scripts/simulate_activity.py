@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
 """
-Скрипт для симуляции бурной активности пользователей:
+Скрипт для симуляции бурной активности пользователей через API эндпоинты:
 - Множественные запросы на предсказания от разных пользователей
 - Случайные интервалы между запросами
 - Разные модели и входные данные
+Все операции выполняются через API эндпоинты
 """
-import sys
 import os
 import time
 import random
 import requests
 from datetime import datetime
-
-# Добавляем путь к проекту
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 
@@ -47,7 +44,7 @@ def login(email: str, password: str) -> str:
 
 
 def get_user_models(token: str) -> list:
-    """Получение списка моделей пользователя"""
+    """Получение списка моделей пользователя через API"""
     try:
         headers = {"Authorization": f"Bearer {token}"}
         response = requests.get(
@@ -56,7 +53,9 @@ def get_user_models(token: str) -> list:
             timeout=5
         )
         if response.status_code == 200:
-            models = response.json()
+            data = response.json()
+            # API возвращает {"models": [...], "total": N} или просто список
+            models = data.get("models", data) if isinstance(data, dict) else data
             return models if isinstance(models, list) else []
         return []
     except Exception as e:
