@@ -127,8 +127,8 @@ def main():
         st.title("🔐 Вход")
         
         if st.session_state.token is None:
-            email = st.text_input("Email", value="demo@example.com")
-            password = st.text_input("Пароль", type="password", value="demo123")
+            email = st.text_input("Email", value="admin@mlservice.com")
+            password = st.text_input("Пароль", type="password", value="admin123")
             
             if st.button("Войти", type="primary"):
                 if login(email, password):
