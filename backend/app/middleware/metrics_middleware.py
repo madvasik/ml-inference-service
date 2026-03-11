@@ -35,13 +35,10 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                 
                 prediction_requests_total.labels(status=status, model_id=model_id).inc()
                 
-                # Задержка для POST запросов на предсказания - это время создания задачи, не выполнения
-                # Реальная задержка измеряется в Celery task
-                latency = time.time() - start_time
-                if status == "success":
-                    prediction_latency_seconds.labels(model_id=model_id).observe(latency)
-                else:
-                    # Регистрируем ошибку
+                # Реальная задержка выполнения предсказания измеряется в Celery task (prediction_tasks.py)
+                # Здесь мы только регистрируем создание запроса
+                if status != "success":
+                    # Регистрируем ошибку API
                     error_type = "api_error"
                     if response.status_code == 404:
                         error_type = "model_not_found"
