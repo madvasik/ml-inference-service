@@ -66,5 +66,3 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Scripts and utilities (not part of production code)
-scripts/
