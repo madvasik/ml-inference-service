@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from backend.app.api.deps import get_current_user
 from backend.app.database.session import get_db
@@ -11,6 +11,7 @@ from backend.app.billing.service import deduct_credits, get_balance
 from backend.app.schemas.prediction import PredictionCreate, PredictionResponse, PredictionList, PredictionTaskResponse
 from backend.app.tasks.prediction_tasks import execute_prediction
 from backend.app.config import settings
+from backend.app.monitoring.metrics import active_users
 
 router = APIRouter()
 
@@ -18,6 +19,7 @@ router = APIRouter()
 @router.post("", response_model=PredictionTaskResponse, status_code=status.HTTP_202_ACCEPTED)
 def create_prediction(
     prediction_data: PredictionCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -34,6 +36,9 @@ def create_prediction(
             detail="Model not found"
         )
     
+    # Устанавливаем model_id в request.state для middleware
+    request.state.model_id = str(prediction_data.model_id)
+    
     # Проверка баланса
     balance = get_balance(db, current_user.id)
     if balance < settings.prediction_cost:
@@ -41,6 +46,8 @@ def create_prediction(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=f"Insufficient balance. Required: {settings.prediction_cost}, Available: {balance}"
         )
+    
+    # Метрика active_users будет обновляться через периодическую задачу или endpoint
     
     # Создание записи предсказания
     prediction = Prediction(

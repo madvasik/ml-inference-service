@@ -4,10 +4,16 @@ from fastapi.responses import JSONResponse
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from starlette.responses import Response
 import logging
-from backend.app.api.v1 import auth, users, models, predictions, billing, admin
+from datetime import datetime, timedelta, timezone
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from backend.app.api.v1 import auth, users, models, predictions, billing, admin, metrics
 from backend.app.config import settings
 from backend.app.middleware.metrics_middleware import MetricsMiddleware
 from backend.app.middleware.rate_limit import RateLimitMiddleware
+from backend.app.database.session import SessionLocal
+from backend.app.models.prediction import Prediction
+from backend.app.monitoring.metrics import active_users
 from backend.app.exceptions import (
     MLServiceException,
     ModelNotFoundError,
@@ -52,6 +58,7 @@ app.include_router(models.router, prefix=f"{settings.api_v1_prefix}/models", tag
 app.include_router(predictions.router, prefix=f"{settings.api_v1_prefix}/predictions", tags=["predictions"])
 app.include_router(billing.router, prefix=f"{settings.api_v1_prefix}/billing", tags=["billing"])
 app.include_router(admin.router, prefix=f"{settings.api_v1_prefix}/admin", tags=["admin"])
+app.include_router(metrics.router, prefix=f"{settings.api_v1_prefix}/metrics", tags=["metrics"])
 
 
 @app.get("/")
@@ -67,6 +74,20 @@ def health_check():
 @app.get("/metrics")
 def metrics():
     """Prometheus metrics endpoint"""
+    # Обновляем метрику активных пользователей перед возвратом метрик
+    try:
+        db: Session = SessionLocal()
+        try:
+            cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=15)
+            unique_users = db.query(func.count(func.distinct(Prediction.user_id))).filter(
+                Prediction.created_at >= cutoff_time
+            ).scalar() or 0
+            active_users.set(unique_users)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"Failed to update active_users metric: {str(e)}")
+    
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 

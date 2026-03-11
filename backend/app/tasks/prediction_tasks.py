@@ -8,7 +8,8 @@ from backend.app.services.model_loader import load_model
 from backend.app.services.ml_service import predict
 from backend.app.billing.service import deduct_credits
 from backend.app.config import settings
-from backend.app.monitoring.metrics import prediction_errors_total
+from backend.app.monitoring.metrics import prediction_errors_total, prediction_latency_seconds
+import time
 import logging
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,8 @@ def execute_prediction(self, prediction_id: int, model_id: int, user_id: int, in
         input_data: Входные данные для предсказания
     """
     db = self.db
+    start_time = time.time()
+    model_id_str = str(model_id)
     
     try:
         # Получаем предсказание
@@ -70,6 +73,10 @@ def execute_prediction(self, prediction_id: int, model_id: int, user_id: int, in
         
         # Выполняем предсказание
         result = predict(ml_model, input_data)
+        
+        # Измеряем реальное время выполнения предсказания
+        execution_time = time.time() - start_time
+        prediction_latency_seconds.labels(model_id=model_id_str).observe(execution_time)
         
         # Списание кредитов (атомарно)
         if not deduct_credits(db, user_id, settings.prediction_cost, f"Prediction #{prediction_id}"):
