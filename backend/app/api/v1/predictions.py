@@ -8,19 +8,20 @@ from backend.app.models.prediction import Prediction, PredictionStatus
 from backend.app.services.model_loader import load_model
 from backend.app.services.ml_service import predict
 from backend.app.billing.service import deduct_credits, get_balance
-from backend.app.schemas.prediction import PredictionCreate, PredictionResponse, PredictionList
+from backend.app.schemas.prediction import PredictionCreate, PredictionResponse, PredictionList, PredictionTaskResponse
+from backend.app.tasks.prediction_tasks import execute_prediction
 from backend.app.config import settings
 
 router = APIRouter()
 
 
-@router.post("", response_model=PredictionResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=PredictionTaskResponse, status_code=status.HTTP_202_ACCEPTED)
 def create_prediction(
     prediction_data: PredictionCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Создание предсказания"""
+    """Создание асинхронного предсказания"""
     # Проверка существования модели и прав доступа
     model = db.query(MLModel).filter(
         MLModel.id == prediction_data.model_id,
@@ -50,39 +51,23 @@ def create_prediction(
         credits_spent=0
     )
     db.add(prediction)
-    db.flush()
+    db.commit()
+    db.refresh(prediction)
     
-    try:
-        # Загрузка модели
-        ml_model = load_model(model.file_path)
-        
-        # Выполнение предсказания
-        result = predict(ml_model, prediction_data.input_data)
-        
-        # Списание кредитов (атомарно)
-        if not deduct_credits(db, current_user.id, settings.prediction_cost, f"Prediction #{prediction.id}"):
-            raise HTTPException(
-                status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                detail="Failed to deduct credits"
-            )
-        
-        # Обновление предсказания
-        prediction.result = result
-        prediction.status = PredictionStatus.COMPLETED
-        prediction.credits_spent = settings.prediction_cost
-        db.commit()
-        db.refresh(prediction)
-        
-        return prediction
-        
-    except Exception as e:
-        # Обновление статуса на FAILED
-        prediction.status = PredictionStatus.FAILED
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Prediction failed: {str(e)}"
-        )
+    # Запуск асинхронной задачи
+    task = execute_prediction.delay(
+        prediction_id=prediction.id,
+        model_id=prediction_data.model_id,
+        user_id=current_user.id,
+        input_data=prediction_data.input_data
+    )
+    
+    return PredictionTaskResponse(
+        task_id=task.id,
+        prediction_id=prediction.id,
+        status="pending",
+        message="Prediction task created. Use GET /predictions/{prediction_id} to check status."
+    )
 
 
 @router.get("", response_model=PredictionList)

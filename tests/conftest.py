@@ -107,3 +107,19 @@ def test_ml_model(db_session, test_user, test_model_file):
     db_session.refresh(model)
     
     return model
+
+
+@pytest.fixture
+def mock_redis():
+    """Мок для Redis (для тестов Celery)"""
+    from unittest.mock import Mock
+    redis_mock = Mock()
+    return redis_mock
+
+
+@pytest.fixture
+def mock_celery_app():
+    """Мок для Celery app"""
+    from unittest.mock import Mock
+    celery_app = Mock()
+    return celery_app

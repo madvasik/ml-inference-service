@@ -21,10 +21,35 @@ def upload_model(
 ):
     """Загрузка ML модели"""
     # Проверка расширения файла
-    if not file.filename.endswith('.pkl'):
+    if not file.filename or not file.filename.endswith('.pkl'):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only .pkl files are supported"
+        )
+    
+    # Проверка размера файла
+    max_size_bytes = settings.max_upload_size_mb * 1024 * 1024
+    file.file.seek(0, 2)  # Переход в конец файла
+    file_size = file.file.tell()
+    file.file.seek(0)  # Возврат в начало
+    
+    if file_size > max_size_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File size exceeds maximum allowed size of {settings.max_upload_size_mb}MB"
+        )
+    
+    # Валидация имени модели
+    if not model_name or len(model_name.strip()) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Model name cannot be empty"
+        )
+    
+    if len(model_name) > 255:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Model name is too long (max 255 characters)"
         )
     
     # Создание директории для пользователя

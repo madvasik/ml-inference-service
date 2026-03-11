@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from backend.app.models.balance import Balance
 from backend.app.models.transaction import Transaction, TransactionType
 from backend.app.config import settings
+from backend.app.monitoring.metrics import billing_transactions_total
 
 
 def get_balance(db: Session, user_id: int) -> int:
@@ -42,6 +43,9 @@ def deduct_credits(db: Session, user_id: int, amount: int, description: str = No
     db.add(transaction)
     db.commit()
     
+    # Обновление метрик
+    billing_transactions_total.labels(type="debit").inc()
+    
     return True
 
 
@@ -65,3 +69,6 @@ def add_credits(db: Session, user_id: int, amount: int, description: str = None)
     )
     db.add(transaction)
     db.commit()
+    
+    # Обновление метрик
+    billing_transactions_total.labels(type="credit").inc()

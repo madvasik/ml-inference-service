@@ -26,3 +26,11 @@ class PredictionResponse(BaseModel):
 class PredictionList(BaseModel):
     predictions: list[PredictionResponse]
     total: int
+
+
+class PredictionTaskResponse(BaseModel):
+    """Ответ при создании асинхронного предсказания"""
+    task_id: str
+    prediction_id: int
+    status: str
+    message: str

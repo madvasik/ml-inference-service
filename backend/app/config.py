@@ -22,6 +22,26 @@ class Settings(BaseSettings):
     # ML Models
     ml_models_dir: str = "ml_models"
     
+    # Redis
+    redis_url: str = "redis://redis:6379/0"
+    
+    # Celery
+    celery_broker_url: str = "redis://redis:6379/0"
+    celery_result_backend: str = "redis://redis:6379/0"
+    
+    # Rate Limiting
+    rate_limit_per_minute: int = 1000
+    rate_limit_per_user_per_minute: int = 100
+    
+    # CORS
+    cors_origins: str = "*"  # В production указать конкретные домены через запятую
+    
+    # File Upload
+    max_upload_size_mb: int = 100  # Максимальный размер загружаемого файла в MB
+    
+    # Logging
+    log_json_format: bool = False  # Использовать JSON формат для логирования
+    
     class Config:
         env_file = ".env"
         case_sensitive = False
