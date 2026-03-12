@@ -180,7 +180,7 @@ for user_data in "${USERS[@]}"; do
     topup_result=$(topup_balance "$token" "$credits")
     http_code=$(echo "$topup_result" | grep -o "HTTP_CODE:[0-9]*" | cut -d: -f2)
     if [ "$http_code" = "200" ]; then
-        balance=$(echo "$topup_result" | python3 -c "import sys, json; print(json.load(sys.stdin).get('credits', 0))" 2>/dev/null)
+        balance=$(echo "$topup_result" | sed 's/HTTP_CODE:[0-9]*$//' | python3 -c "import sys, json; print(json.load(sys.stdin).get('credits', 0))" 2>/dev/null)
         echo "   💰 Баланс пополнен: $balance кредитов"
     else
         echo "   ⚠️  Ошибка пополнения баланса (HTTP $http_code)"
@@ -192,14 +192,19 @@ for user_data in "${USERS[@]}"; do
     upload_result=$(upload_model "$token" "$MODEL_FILE" "$model_name")
     http_code=$(echo "$upload_result" | grep -o "HTTP_CODE:[0-9]*" | cut -d: -f2)
     if [ "$http_code" = "201" ]; then
-        model_id=$(echo "$upload_result" | python3 -c "import sys, json; print(json.load(sys.stdin).get('id', ''))" 2>/dev/null)
-        if [ -n "$model_id" ]; then
+        # Убираем HTTP_CODE из ответа перед парсингом JSON
+        json_response=$(echo "$upload_result" | sed 's/HTTP_CODE:[0-9]*$//')
+        model_id=$(echo "$json_response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('id', ''))" 2>/dev/null)
+        if [ -n "$model_id" ] && [ "$model_id" != "None" ]; then
             echo "$email:$model_id" >> "$MODELS_FILE"
             model_count=$((model_count + 1))
             echo "   ✅ Модель загружена: $model_name (ID: $model_id)"
+        else
+            echo "   ⚠️  Не удалось получить model_id из ответа"
         fi
     else
-        echo "   ❌ Ошибка загрузки модели (HTTP $http_code)"
+        error_msg=$(echo "$upload_result" | sed 's/HTTP_CODE:[0-9]*$//' | head -3)
+        echo "   ❌ Ошибка загрузки модели (HTTP $http_code): $error_msg"
     fi
 done
 
@@ -230,11 +235,13 @@ while IFS=: read -r email model_id; do
         http_code=$(echo "$pred_result" | grep -o "HTTP_CODE:[0-9]*" | cut -d: -f2)
         
         if [ "$http_code" = "202" ]; then
-            prediction_id=$(echo "$pred_result" | python3 -c "import sys, json; print(json.load(sys.stdin).get('prediction_id', '?'))" 2>/dev/null)
+            json_response=$(echo "$pred_result" | sed 's/HTTP_CODE:[0-9]*$//')
+            prediction_id=$(echo "$json_response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('prediction_id', '?'))" 2>/dev/null)
             echo "   ✅ Предсказание #$j: создано (ID: $prediction_id)"
             total_predictions=$((total_predictions + 1))
         else
-            echo "   ❌ Ошибка создания предсказания #$j (HTTP $http_code)"
+            error_msg=$(echo "$pred_result" | sed 's/HTTP_CODE:[0-9]*$//' | head -2)
+            echo "   ❌ Ошибка создания предсказания #$j (HTTP $http_code): $error_msg"
         fi
     done
 done < "$MODELS_FILE"
