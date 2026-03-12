@@ -20,10 +20,20 @@ echo "✅ API доступен"
 register_user() {
     local email=$1
     local password=$2
-    curl -s -X POST "$BASE_URL/api/v1/auth/register" \
+    local response=$(curl -s -X POST "$BASE_URL/api/v1/auth/register" \
         -H "Content-Type: application/json" \
-        -d "{\"email\":\"$email\",\"password\":\"$password\"}" | \
-        python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('access_token', ''))" 2>/dev/null
+        -d "{\"email\":\"$email\",\"password\":\"$password\"}" \
+        -w "\nHTTP_CODE:%{http_code}")
+    local http_code=$(echo "$response" | grep -o "HTTP_CODE:[0-9]*" | cut -d: -f2)
+    
+    if [ "$http_code" = "201" ]; then
+        echo "$response" | grep -o '"access_token":"[^"]*' | cut -d'"' -f4
+    elif [ "$http_code" = "400" ]; then
+        # Пробуем войти, если пользователь уже существует
+        login "$email" "$password"
+    else
+        echo ""
+    fi
 }
 
 # Функция для входа
@@ -33,7 +43,7 @@ login() {
     curl -s -X POST "$BASE_URL/api/v1/auth/login" \
         -H "Content-Type: application/json" \
         -d "{\"email\":\"$email\",\"password\":\"$password\"}" | \
-        python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('access_token', ''))" 2>/dev/null
+        grep -o '"access_token":"[^"]*' | cut -d'"' -f4
 }
 
 # Функция для пополнения баланса
@@ -140,8 +150,12 @@ USERS=(
     "user5@example.com:user123:2000"
 )
 
-declare -A USER_TOKENS
-declare -A USER_MODELS
+# Сохраняем токены и модели во временные файлы
+TOKENS_FILE=$(mktemp)
+MODELS_FILE=$(mktemp)
+
+user_count=0
+model_count=0
 
 for user_data in "${USERS[@]}"; do
     email=$(echo "$user_data" | cut -d: -f1)
@@ -154,16 +168,12 @@ for user_data in "${USERS[@]}"; do
     # Регистрация
     token=$(register_user "$email" "$password")
     if [ -z "$token" ]; then
-        # Пробуем войти, если пользователь уже существует
-        token=$(login "$email" "$password")
-    fi
-    
-    if [ -z "$token" ]; then
         echo "   ❌ Не удалось зарегистрировать/войти"
         continue
     fi
     
-    USER_TOKENS["$email"]=$token
+    echo "$email:$token" >> "$TOKENS_FILE"
+    user_count=$((user_count + 1))
     echo "   ✅ Пользователь зарегистрирован/вошел"
     
     # Пополнение баланса
@@ -177,13 +187,17 @@ for user_data in "${USERS[@]}"; do
     fi
     
     # Загрузка модели
-    model_name="Model_$(echo "$email" | grep -o '[0-9]')"
+    user_num=$(echo "$email" | grep -o '[0-9]')
+    model_name="Model_$user_num"
     upload_result=$(upload_model "$token" "$MODEL_FILE" "$model_name")
     http_code=$(echo "$upload_result" | grep -o "HTTP_CODE:[0-9]*" | cut -d: -f2)
     if [ "$http_code" = "201" ]; then
         model_id=$(echo "$upload_result" | python3 -c "import sys, json; print(json.load(sys.stdin).get('id', ''))" 2>/dev/null)
-        USER_MODELS["$email"]=$model_id
-        echo "   ✅ Модель загружена: $model_name (ID: $model_id)"
+        if [ -n "$model_id" ]; then
+            echo "$email:$model_id" >> "$MODELS_FILE"
+            model_count=$((model_count + 1))
+            echo "   ✅ Модель загружена: $model_name (ID: $model_id)"
+        fi
     else
         echo "   ❌ Ошибка загрузки модели (HTTP $http_code)"
     fi
@@ -194,10 +208,8 @@ echo ""
 echo "🔮 Создание предсказаний через API..."
 total_predictions=0
 
-for user_data in "${USERS[@]}"; do
-    email=$(echo "$user_data" | cut -d: -f1)
-    token="${USER_TOKENS[$email]}"
-    model_id="${USER_MODELS[$email]}"
+while IFS=: read -r email model_id; do
+    token=$(grep "^$email:" "$TOKENS_FILE" | cut -d: -f2)
     
     if [ -z "$token" ] || [ -z "$model_id" ]; then
         continue
@@ -225,17 +237,17 @@ for user_data in "${USERS[@]}"; do
             echo "   ❌ Ошибка создания предсказания #$j (HTTP $http_code)"
         fi
     done
-done
+done < "$MODELS_FILE"
 
-# Удаляем временный файл модели
-rm -f "$MODEL_FILE"
+# Удаляем временные файлы
+rm -f "$MODEL_FILE" "$TOKENS_FILE" "$MODELS_FILE"
 
 # Итоговая статистика
 echo ""
 echo "============================================================"
 echo "📊 Итоговая статистика:"
-echo "   👥 Пользователей создано: $((${#USERS[@]} + 1)) (1 админ, ${#USERS[@]} обычных)"
-echo "   🤖 ML моделей загружено: ${#USER_MODELS[@]}"
+echo "   👥 Пользователей создано: $((user_count + 1)) (1 админ, $user_count обычных)"
+echo "   🤖 ML моделей загружено: $model_count"
 echo "   🔮 Предсказаний создано: $total_predictions"
 echo ""
 echo "✅ Инициализация данных завершена успешно!"
