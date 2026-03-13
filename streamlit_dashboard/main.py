@@ -104,11 +104,17 @@ def fetch_predictions(user_id: int = None, model_id: int = None):
 
 
 def fetch_transactions(user_id: int = None):
-    """Получение транзакций пользователя"""
+    """Получение транзакций (для админа - все транзакции)"""
     try:
+        params = {}
+        if user_id:
+            params['user_id'] = user_id
+        
+        # Используем админский endpoint для получения всех транзакций
         response = requests.get(
-            f"{BASE_URL}/api/v1/billing/transactions",
+            f"{BASE_URL}/api/v1/admin/transactions",
             headers=get_headers(),
+            params=params,
             timeout=5
         )
         if response.status_code == 200:
@@ -207,13 +213,25 @@ def main():
         # Фильтры
         col1, col2 = st.columns(2)
         with col1:
-            filter_user_id = st.number_input("Фильтр по User ID", min_value=1, value=None, step=1)
+            filter_user_id = st.number_input(
+                "Фильтр по User ID", 
+                min_value=0, 
+                value=0, 
+                step=1,
+                help="Введите User ID для фильтрации (0 = без фильтра)"
+            )
         with col2:
-            filter_model_id = st.number_input("Фильтр по Model ID", min_value=1, value=None, step=1)
+            filter_model_id = st.number_input(
+                "Фильтр по Model ID", 
+                min_value=0, 
+                value=0, 
+                step=1,
+                help="Введите Model ID для фильтрации (0 = без фильтра)"
+            )
         
         predictions_data = fetch_predictions(
-            user_id=int(filter_user_id) if filter_user_id else None,
-            model_id=int(filter_model_id) if filter_model_id else None
+            user_id=int(filter_user_id) if filter_user_id > 0 else None,
+            model_id=int(filter_model_id) if filter_model_id > 0 else None
         )
         
         predictions = predictions_data.get('predictions', [])
@@ -293,7 +311,19 @@ def main():
     with tab3:
         st.header("Транзакции")
         
-        transactions_data = fetch_transactions()
+        # Фильтр по User ID
+        filter_user_id_trans = st.number_input(
+            "Фильтр по User ID", 
+            min_value=0, 
+            value=0, 
+            step=1,
+            key="filter_user_id_transactions",
+            help="Введите User ID для фильтрации транзакций (0 = без фильтра)"
+        )
+        
+        transactions_data = fetch_transactions(
+            user_id=int(filter_user_id_trans) if filter_user_id_trans > 0 else None
+        )
         transactions = transactions_data.get('transactions', [])
         total = transactions_data.get('total', 0)
         

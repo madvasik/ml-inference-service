@@ -7,7 +7,7 @@ import os
 from datetime import datetime, timedelta
 
 # Добавляем путь к проекту
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 from sqlalchemy.orm import Session
 from backend.app.database.session import SessionLocal

@@ -8,7 +8,7 @@
 - Создание предсказаний
 
 ⚠️  ВНИМАНИЕ: Этот скрипт использует прямой доступ к базе данных через SQLAlchemy.
-    Для использования API эндпоинтов используйте: scripts/init_data_api.sh
+    Для использования API эндпоинтов используйте: scripts/setup/init_data_api.sh
 """
 import sys
 import os
@@ -18,7 +18,7 @@ import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 
 # Добавляем путь к проекту
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 from sqlalchemy.orm import Session
 from backend.app.database.session import SessionLocal

@@ -6,8 +6,10 @@ from backend.app.api.deps import get_current_admin
 from backend.app.database.session import get_db
 from backend.app.models.user import User
 from backend.app.models.prediction import Prediction
+from backend.app.models.transaction import Transaction
 from backend.app.schemas.user import UserResponse
 from backend.app.schemas.prediction import PredictionResponse, PredictionList
+from backend.app.schemas.billing import TransactionList
 
 router = APIRouter()
 
@@ -79,3 +81,23 @@ def get_prediction(
             detail="Prediction not found"
         )
     return prediction
+
+
+@router.get("/transactions", response_model=TransactionList)
+def list_all_transactions(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    user_id: Optional[int] = Query(None, description="Фильтр по user_id"),
+    current_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Получение списка всех транзакций (только для администраторов)"""
+    query = db.query(Transaction)
+    
+    if user_id:
+        query = query.filter(Transaction.user_id == user_id)
+    
+    total = query.count()
+    transactions = query.order_by(desc(Transaction.created_at)).offset(skip).limit(limit).all()
+    
+    return TransactionList(transactions=transactions, total=total)

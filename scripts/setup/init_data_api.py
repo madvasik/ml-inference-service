@@ -113,7 +113,7 @@ def create_prediction(token: str, model_id: int, input_data: dict) -> dict:
 def create_admin_direct():
     """Создание администратора напрямую в БД (нет API эндпоинта для создания админа)"""
     import sys
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
     from sqlalchemy.orm import Session
     from backend.app.database.session import SessionLocal
     from backend.app.models.user import User, UserRole
