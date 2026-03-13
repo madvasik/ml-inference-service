@@ -20,6 +20,7 @@ COPY alembic/ /app/alembic/
 # Переменные окружения
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus_multiproc_dir
 
-# Команда запуска Celery worker
-CMD ["celery", "-A", "backend.app.tasks.celery_app", "worker", "--loglevel=info"]
+# Команда запуска Celery worker (с поддержкой метрик если нужно)
+CMD ["python", "-m", "backend.app.tasks.start_celery_with_metrics"]

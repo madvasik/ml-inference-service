@@ -52,6 +52,18 @@ class RealWorldScenarioTester:
         self.snapshot_before = {}
         self.snapshot_after = {}
         
+    def __init__(self):
+        self.results: List[TestResult] = []
+        self.base_url = BASE_URL
+        self.prometheus_url = PROMETHEUS_URL
+        self.grafana_url = GRAFANA_URL
+        self.test_users = []
+        self.test_models = {}
+        self.snapshot_before = {}
+        self.snapshot_after = {}
+        self.debug_mode = os.getenv("DEBUG_TESTS", "false").lower() == "true"
+        self.verbose = os.getenv("VERBOSE_TESTS", "true").lower() == "true"
+        
     def log(self, message: str, color: str = RESET):
         """Логирование с цветом"""
         print(f"{color}{message}{RESET}")
@@ -71,6 +83,37 @@ class RealWorldScenarioTester:
     def warning(self, message: str):
         """Предупреждение"""
         self.log(f"⚠️  {message}", YELLOW)
+    
+    def debug(self, message: str):
+        """Отладочное сообщение"""
+        if self.debug_mode or self.verbose:
+            self.log(f"🔍 [DEBUG] {message}", YELLOW)
+    
+    def log_request(self, method: str, url: str, headers: dict = None, data: dict = None):
+        """Логирование HTTP запроса"""
+        if self.verbose:
+            self.debug(f"→ {method} {url}")
+            if headers:
+                self.debug(f"  Headers: {json.dumps({k: v[:50] + '...' if isinstance(v, str) and len(v) > 50 else v for k, v in headers.items() if k != 'Authorization'}, indent=2)}")
+            if data:
+                self.debug(f"  Body: {json.dumps(data, indent=2)[:500]}")
+    
+    def log_response(self, response: requests.Response, show_body: bool = False):
+        """Логирование HTTP ответа"""
+        if self.verbose:
+            status_emoji = "✅" if 200 <= response.status_code < 300 else "❌"
+            self.debug(f"{status_emoji} ← {response.status_code} {response.reason}")
+            if show_body and response.text:
+                try:
+                    body = json.loads(response.text)
+                    self.debug(f"  Response: {json.dumps(body, indent=2)[:500]}")
+                except:
+                    self.debug(f"  Response: {response.text[:500]}")
+    
+    def log_timing(self, operation: str, duration: float):
+        """Логирование времени выполнения операции"""
+        if self.verbose:
+            self.debug(f"⏱️  {operation}: {duration:.3f}s")
         
     def section(self, title: str):
         """Заголовок секции"""
@@ -99,32 +142,55 @@ class RealWorldScenarioTester:
     
     def login_user(self, email: str, password: str) -> Optional[str]:
         """Вход пользователя и получение токена"""
+        start_time = time.time()
+        url = f"{self.base_url}/api/v1/auth/login"
+        data = {"email": email, "password": password}
+        self.log_request("POST", url, data=data)
+        
         try:
-            response = requests.post(
-                f"{self.base_url}/api/v1/auth/login",
-                json={"email": email, "password": password},
-                timeout=5
-            )
+            response = requests.post(url, json=data, timeout=5)
+            duration = time.time() - start_time
+            self.log_response(response, show_body=False)
+            self.log_timing(f"Login {email}", duration)
+            
             if response.status_code == 200:
-                return response.json()["access_token"]
+                token = response.json()["access_token"]
+                self.debug(f"Получен токен: {token[:20]}...")
+                return token
+            else:
+                self.debug(f"Ошибка входа: {response.status_code} - {response.text[:200]}")
             return None
         except Exception as e:
+            duration = time.time() - start_time
             self.error(f"Ошибка входа для {email}: {e}")
+            if self.debug_mode:
+                import traceback
+                self.debug(f"Traceback: {traceback.format_exc()}")
             return None
     
     def register_user(self, email: str, password: str) -> Optional[str]:
         """Регистрация пользователя"""
+        start_time = time.time()
+        url = f"{self.base_url}/api/v1/auth/register"
+        data = {"email": email, "password": password}
+        self.log_request("POST", url, data=data)
+        
         try:
-            response = requests.post(
-                f"{self.base_url}/api/v1/auth/register",
-                json={"email": email, "password": password},
-                timeout=5
-            )
+            response = requests.post(url, json=data, timeout=5)
+            duration = time.time() - start_time
+            self.log_response(response, show_body=False)
+            self.log_timing(f"Register {email}", duration)
+            
             if response.status_code == 201:
-                return response.json()["access_token"]
+                token = response.json()["access_token"]
+                self.debug(f"Пользователь зарегистрирован, токен: {token[:20]}...")
+                return token
             elif response.status_code == 400:
+                self.debug(f"Пользователь уже существует, пробуем войти...")
                 # Пользователь уже существует, пробуем войти
                 return self.login_user(email, password)
+            else:
+                self.debug(f"Ошибка регистрации: {response.status_code} - {response.text[:200]}")
             return None
         except Exception as e:
             self.error(f"Ошибка регистрации для {email}: {e}")
@@ -282,20 +348,27 @@ class RealWorldScenarioTester:
             initial_balance = response.json().get("credits", 0)
             self.info(f"Начальный баланс: {initial_balance} кредитов")
             
-            # 3. Пополнение баланса
+            # Шаг 3: Пополнение баланса
+            self.info(f"[Шаг 3/6] Пополнение баланса")
             self.info("Пополнение баланса на 500 кредитов")
-            response = requests.post(
-                f"{self.base_url}/api/v1/billing/topup",
-                headers=headers,
-                json={"amount": 500},
-                timeout=5
-            )
+            start_time = time.time()
+            url = f"{self.base_url}/api/v1/billing/topup"
+            data = {"amount": 500}
+            self.log_request("POST", url, headers=headers, data=data)
+            response = requests.post(url, headers=headers, json=data, timeout=5)
+            duration = time.time() - start_time
+            self.log_response(response, show_body=True)
+            self.log_timing("POST topup", duration)
+            
             if response.status_code != 200:
+                self.debug(f"Ошибка пополнения баланса: {response.status_code} - {response.text[:200]}")
                 return TestResult("scenario_1", False, "Не удалось пополнить баланс")
             new_balance = response.json().get("credits", 0)
             self.success(f"Баланс пополнен: {new_balance} кредитов")
+            self.debug(f"Баланс до: {initial_balance}, после: {new_balance}, ожидалось: {initial_balance + 500}")
             
             if new_balance != initial_balance + 500:
+                self.debug(f"Несоответствие баланса! Ожидалось: {initial_balance + 500}, получено: {new_balance}")
                 return TestResult("scenario_1", False, f"Неверный баланс после пополнения: ожидалось {initial_balance + 500}, получено {new_balance}")
             
             # 4. Загрузка модели
@@ -2856,21 +2929,18 @@ class RealWorldScenarioTester:
                 self.results.append(result)
                 
                 if result.success:
-                    self.success(f"✅ {result.name}: {result.message}")
+                    self.success(f"✅ {result.name}")
                 else:
-                    self.error(f"❌ {result.name}: {result.message}")
-                    if result.details:
-                        self.info(f"   Детали: {result.details}")
+                    self.error(f"❌ {result.name}: {result.message[:60]}")
                 
-                # Небольшая пауза между сценариями
-                time.sleep(2)
+                time.sleep(1)
                 
             except Exception as e:
-                self.error(f"Ошибка выполнения сценария {scenario_func.__name__}: {e}")
+                self.error(f"❌ {scenario_func.__name__}: {str(e)[:60]}")
                 self.results.append(TestResult(
                     scenario_func.__name__,
                     False,
-                    f"Исключение: {str(e)}"
+                    f"Исключение: {str(e)[:60]}"
                 ))
         
         # Создаем снимок метрик после тестов
@@ -2886,51 +2956,27 @@ class RealWorldScenarioTester:
     
     def print_summary(self):
         """Вывод итогового отчета"""
-        self.section("ИТОГОВЫЙ ОТЧЕТ")
-        
         total = len(self.results)
         successful = sum(1 for r in self.results if r.success)
         failed = total - successful
         
-        self.info(f"Всего сценариев: {total}")
-        self.info(f"Успешных: {successful}")
-        self.info(f"Неудачных: {failed}")
-        
-        if failed > 0:
-            self.error("\nНеудачные сценарии:")
-            for result in self.results:
-                if not result.success:
-                    self.error(f"  - {result.name}: {result.message}")
-        
-        # Сравнение метрик до и после
-        self.section("Изменение метрик")
-        
-        if self.snapshot_before.get("backend") and self.snapshot_after.get("backend"):
-            before = self.snapshot_before["backend"]
-            after = self.snapshot_after["backend"]
-            
-            if "active_users" in before and "active_users" in after:
-                diff = after["active_users"] - before["active_users"]
-                self.info(f"active_users: {before['active_users']} → {after['active_users']} (изменение: {diff:+g})")
-            
-            if "prediction_requests_completed" in before and "prediction_requests_completed" in after:
-                diff = after["prediction_requests_completed"] - before["prediction_requests_completed"]
-                self.info(f"prediction_requests_completed: {before.get('prediction_requests_completed', 0)} → "
-                         f"{after.get('prediction_requests_completed', 0)} (изменение: {diff:+g})")
-        
-        self.section("РЕКОМЕНДАЦИИ")
-        self.info("1. Проверьте Grafana дашборды: http://localhost:3000")
-        self.info("2. Проверьте Prometheus запросы: http://localhost:9090")
-        self.info("3. Проверьте Streamlit панель: http://localhost:8501")
-        self.info("4. Убедитесь, что данные согласованы между всеми системами")
-        
-        self.section("ТЕСТИРОВАНИЕ ЗАВЕРШЕНО")
-        self.info(f"Время завершения: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print()  # Пустая строка
+        self.section("РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ")
         
         if successful == total:
-            self.success("🎉 ВСЕ СЦЕНАРИИ ВЫПОЛНЕНЫ УСПЕШНО!")
+            self.success(f"✅ Все сценарии выполнены успешно: {successful}/{total}")
         else:
-            self.warning(f"⚠️  {failed} сценариев завершились с ошибками")
+            self.error(f"❌ Провалено сценариев: {failed}/{total}")
+            failed_scenarios = [r.name for r in self.results if not r.success]
+            if failed_scenarios:
+                for scenario_name in failed_scenarios[:5]:  # Максимум 5
+                    failed_result = next((r for r in self.results if r.name == scenario_name and not r.success), None)
+                    if failed_result:
+                        self.error(f"  - {scenario_name}: {failed_result.message[:80]}")
+                if len(failed_scenarios) > 5:
+                    self.error(f"  ... и еще {len(failed_scenarios) - 5} сценариев")
+        
+        self.info(f"Время завершения: {datetime.now().strftime('%H:%M:%S')}")
 
 
 def main():

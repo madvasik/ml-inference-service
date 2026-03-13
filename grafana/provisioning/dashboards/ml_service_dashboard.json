@@ -31,18 +31,18 @@
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
         "targets": [
           {
-            "expr": "histogram_quantile(0.50, sum(rate(prediction_latency_seconds_bucket[5m])) by (le, model_id))",
-            "legendFormat": "p50 - {{model_id}}",
+            "expr": "histogram_quantile(0.50, sum(rate(prediction_latency_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p50",
             "refId": "A"
           },
           {
-            "expr": "histogram_quantile(0.95, sum(rate(prediction_latency_seconds_bucket[5m])) by (le, model_id))",
-            "legendFormat": "p95 - {{model_id}}",
+            "expr": "histogram_quantile(0.95, sum(rate(prediction_latency_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p95",
             "refId": "B"
           },
           {
-            "expr": "histogram_quantile(0.99, sum(rate(prediction_latency_seconds_bucket[5m])) by (le, model_id))",
-            "legendFormat": "p99 - {{model_id}}",
+            "expr": "histogram_quantile(0.99, sum(rate(prediction_latency_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p99",
             "refId": "C"
           }
         ],
@@ -75,7 +75,7 @@
         "gridPos": {"h": 8, "w": 6, "x": 12, "y": 8},
         "targets": [
           {
-            "expr": "active_users",
+            "expr": "sum(active_users)",
             "refId": "A"
           }
         ],
@@ -144,7 +144,7 @@
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
         "targets": [
           {
-            "expr": "sum(rate(prediction_requests_total{status=\"completed\"}[5m])) / sum(rate(prediction_requests_total{status=~\"completed|failed\"}[5m])) * 100",
+            "expr": "sum(prediction_requests_total{status=\"completed\"}) / (sum(prediction_requests_total{status=\"completed\"}) + sum(prediction_requests_total{status=\"failed\"})) * 100",
             "legendFormat": "Success Rate",
             "refId": "A"
           }

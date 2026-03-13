@@ -83,6 +83,8 @@ services:
       context: .
       dockerfile: docker/celery/Dockerfile
     container_name: ml_service_celery
+    ports:
+      - "9091:9091"
     environment:
       DATABASE_URL: postgresql://user:password@postgres:5432/ml_service
       SECRET_KEY: your-secret-key-change-in-production
@@ -101,6 +103,9 @@ services:
       CORS_ORIGINS: "*"
       MAX_UPLOAD_SIZE_MB: 100
       LOG_JSON_FORMAT: "False"
+      ENABLE_METRICS_SERVER: "true"
+      METRICS_PORT: "9091"
+      PROMETHEUS_MULTIPROC_DIR: "/tmp/prometheus_multiproc_dir"
     volumes:
       - ./ml_models:/app/ml_models
     depends_on:

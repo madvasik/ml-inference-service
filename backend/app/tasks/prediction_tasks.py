@@ -72,6 +72,7 @@ def execute_prediction(self, prediction_id: int, model_id: int, user_id: int, in
             prediction_requests_total.labels(status="failed", model_id=model_id_str).inc()
             prediction_errors_total.labels(error_type="model_not_found").inc()
             return {"status": "failed", "error": "Model not found"}
+            return {"status": "failed", "error": "Model not found"}
         
         # Загружаем ML модель
         ml_model = load_model(model.file_path)
