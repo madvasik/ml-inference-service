@@ -23,8 +23,11 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             
             # Собираем метрики для предсказаний
+            # Примечание: метрика инкрементируется здесь только для создания запроса
+            # Реальный статус (completed/failed) обновляется в Celery task
             if "/predictions" in request.url.path and request.method == "POST":
-                status = "success" if response.status_code < 400 else "error"
+                # Статус "pending" означает, что запрос создан и отправлен в очередь
+                status = "pending" if response.status_code == 202 else "error"
                 # Извлекаем model_id из запроса, если возможно
                 model_id = "unknown"
                 try:

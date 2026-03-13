@@ -144,7 +144,7 @@
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
         "targets": [
           {
-            "expr": "sum(rate(prediction_requests_total{status=\"success\"}[5m])) / sum(rate(prediction_requests_total[5m])) * 100",
+            "expr": "sum(rate(prediction_requests_total{status=\"completed\"}[5m])) / sum(rate(prediction_requests_total{status=~\"completed|failed\"}[5m])) * 100",
             "legendFormat": "Success Rate",
             "refId": "A"
           }

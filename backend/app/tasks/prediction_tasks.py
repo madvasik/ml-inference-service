@@ -8,7 +8,11 @@ from backend.app.services.model_loader import load_model
 from backend.app.services.ml_service import predict
 from backend.app.billing.service import deduct_credits
 from backend.app.config import settings
-from backend.app.monitoring.metrics import prediction_errors_total, prediction_latency_seconds
+from backend.app.monitoring.metrics import (
+    prediction_errors_total, 
+    prediction_latency_seconds,
+    prediction_requests_total
+)
 import time
 import logging
 
@@ -65,6 +69,7 @@ def execute_prediction(self, prediction_id: int, model_id: int, user_id: int, in
             logger.error(f"Model {model_id} not found")
             prediction.status = PredictionStatus.FAILED
             db.commit()
+            prediction_requests_total.labels(status="failed", model_id=model_id_str).inc()
             prediction_errors_total.labels(error_type="model_not_found").inc()
             return {"status": "failed", "error": "Model not found"}
         
@@ -83,6 +88,7 @@ def execute_prediction(self, prediction_id: int, model_id: int, user_id: int, in
             logger.error(f"Failed to deduct credits for prediction {prediction_id}")
             prediction.status = PredictionStatus.FAILED
             db.commit()
+            prediction_requests_total.labels(status="failed", model_id=model_id_str).inc()
             prediction_errors_total.labels(error_type="insufficient_credits").inc()
             return {"status": "failed", "error": "Failed to deduct credits"}
         
@@ -91,6 +97,9 @@ def execute_prediction(self, prediction_id: int, model_id: int, user_id: int, in
         prediction.status = PredictionStatus.COMPLETED
         prediction.credits_spent = settings.prediction_cost
         db.commit()
+        
+        # Обновляем метрику успешных предсказаний
+        prediction_requests_total.labels(status="completed", model_id=model_id_str).inc()
         
         logger.info(f"Prediction {prediction_id} completed successfully")
         return {
@@ -103,6 +112,7 @@ def execute_prediction(self, prediction_id: int, model_id: int, user_id: int, in
         logger.error(f"Error executing prediction {prediction_id}: {str(e)}", exc_info=True)
         
         # Обновляем метрики ошибок
+        prediction_requests_total.labels(status="failed", model_id=model_id_str).inc()
         prediction_errors_total.labels(error_type="execution_error").inc()
         
         # Обновляем статус на FAILED
