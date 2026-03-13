@@ -102,10 +102,11 @@ async def test_get_current_user_not_found(db_session):
 @pytest.mark.asyncio
 async def test_get_current_admin_success(db_session, test_user):
     """Тест получения администратора"""
+    from backend.app.auth.security import get_password_hash
     # Создаем администратора
     admin = User(
         email="admin_test@example.com",
-        password_hash="hash",
+        password_hash=get_password_hash("adminpassword"),
         role=UserRole.ADMIN
     )
     db_session.add(admin)

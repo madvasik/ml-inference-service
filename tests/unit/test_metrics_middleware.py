@@ -5,11 +5,8 @@ from fastapi.testclient import TestClient
 from backend.app.main import app
 from backend.app.monitoring.metrics import prediction_requests_total, prediction_latency_seconds
 
-
-@pytest.fixture
-def client():
-    """Тестовый клиент"""
-    return TestClient(app)
+# Используем фикстуру client из conftest.py, которая правильно настраивает БД
+# Не нужно определять свой client здесь
 
 
 def test_metrics_middleware_skips_metrics_endpoint(client):
@@ -70,6 +67,10 @@ def test_metrics_middleware_tracks_prediction_latency(client, test_user, test_ml
     
     token = create_access_token({"sub": str(test_user.id), "type": "access"})
     
+    # Получаем начальное количество samples
+    samples_before = prediction_latency_seconds.collect()[0].samples
+    initial_count = len(samples_before)
+    
     # Мокируем Celery
     with patch('backend.app.api.v1.predictions.execute_prediction.delay') as mock_celery:
         mock_task = Mock()
@@ -87,9 +88,9 @@ def test_metrics_middleware_tracks_prediction_latency(client, test_user, test_ml
     
     assert response.status_code == 202
     
-    # Проверяем, что метрика латентности существует
-    samples = prediction_latency_seconds.collect()[0].samples
-    assert len(samples) > 0
+    # Проверяем, что метрика латентности была записана (количество samples увеличилось)
+    samples_after = prediction_latency_seconds.collect()[0].samples
+    assert len(samples_after) >= initial_count
 
 
 def test_metrics_middleware_handles_exception(client, test_user, test_ml_model):

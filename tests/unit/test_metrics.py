@@ -10,23 +10,24 @@ from backend.app.monitoring.metrics import (
     prediction_errors_total
 )
 
-
+# Используем фикстуру client из conftest.py для тестов, требующих БД
+# Для тестов без БД можно использовать локальную фикстуру
 @pytest.fixture
-def client():
-    """Тестовый клиент"""
+def client_no_db():
+    """Тестовый клиент без БД (для тестов метрик, не требующих БД)"""
     return TestClient(app)
 
 
-def test_metrics_endpoint_exists(client):
+def test_metrics_endpoint_exists(client_no_db):
     """Тест наличия endpoint /metrics"""
-    response = client.get("/metrics")
+    response = client_no_db.get("/metrics")
     assert response.status_code == 200
     assert "text/plain" in response.headers["content-type"] or "text/plain; version=0.0.4" in response.headers.get("content-type", "")
 
 
-def test_metrics_endpoint_contains_prediction_metrics(client):
+def test_metrics_endpoint_contains_prediction_metrics(client_no_db):
     """Тест наличия метрик предсказаний в ответе"""
-    response = client.get("/metrics")
+    response = client_no_db.get("/metrics")
     assert response.status_code == 200
     
     content = response.text
@@ -35,9 +36,9 @@ def test_metrics_endpoint_contains_prediction_metrics(client):
     assert "prediction_latency_seconds" in content or "# HELP prediction_latency_seconds" in content
 
 
-def test_metrics_endpoint_contains_billing_metrics(client):
+def test_metrics_endpoint_contains_billing_metrics(client_no_db):
     """Тест наличия метрик биллинга в ответе"""
-    response = client.get("/metrics")
+    response = client_no_db.get("/metrics")
     assert response.status_code == 200
     
     content = response.text

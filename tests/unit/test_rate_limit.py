@@ -3,11 +3,8 @@ from fastapi.testclient import TestClient
 from backend.app.main import app
 import time
 
-
-@pytest.fixture
-def client():
-    """Тестовый клиент"""
-    return TestClient(app)
+# Используем фикстуру client из conftest.py, которая правильно настраивает БД
+# Не нужно определять свой client здесь
 
 
 def test_rate_limit_allows_requests(client):

@@ -8,14 +8,15 @@ from backend.app.exceptions import (
     PredictionError
 )
 
-
+# Используем фикстуру client из conftest.py для консистентности
+# Но для этих тестов БД не требуется, поэтому можно использовать локальную
 @pytest.fixture
-def client():
-    """Тестовый клиент"""
+def client_no_db():
+    """Тестовый клиент без БД (для тестов обработчиков исключений, не требующих БД)"""
     return TestClient(app)
 
 
-def test_model_not_found_exception_handler(client):
+def test_model_not_found_exception_handler(client_no_db):
     """Тест обработчика ModelNotFoundError"""
     # Создаем исключение и проверяем обработку через мок endpoint
     from unittest.mock import patch
@@ -50,7 +51,7 @@ def test_prediction_error_exception_handler():
     assert PredictionError.__bases__[0] in app.exception_handlers
 
 
-def test_general_exception_handler_debug_mode(client, monkeypatch):
+def test_general_exception_handler_debug_mode(client_no_db, monkeypatch):
     """Тест общего обработчика исключений в debug режиме"""
     from backend.app.config import settings
     
@@ -64,7 +65,7 @@ def test_general_exception_handler_debug_mode(client, monkeypatch):
         monkeypatch.setattr(settings, "debug", original_debug)
 
 
-def test_general_exception_handler_production_mode(client, monkeypatch):
+def test_general_exception_handler_production_mode(client_no_db, monkeypatch):
     """Тест общего обработчика исключений в production режиме"""
     from backend.app.config import settings
     

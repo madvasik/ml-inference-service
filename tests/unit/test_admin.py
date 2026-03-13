@@ -8,9 +8,10 @@ from backend.app.models.ml_model import MLModel
 @pytest.fixture
 def admin_user(db_session, test_user):
     """Создание администратора"""
+    from backend.app.auth.security import get_password_hash
     admin = User(
         email="admin@example.com",
-        password_hash="admin_hash",
+        password_hash=get_password_hash("adminpassword"),
         role=UserRole.ADMIN
     )
     db_session.add(admin)
@@ -22,9 +23,10 @@ def admin_user(db_session, test_user):
 @pytest.fixture
 def another_user(db_session):
     """Создание другого пользователя"""
+    from backend.app.auth.security import get_password_hash
     user = User(
         email="another@example.com",
-        password_hash="another_hash",
+        password_hash=get_password_hash("anotherpassword"),
         role=UserRole.USER
     )
     db_session.add(user)
@@ -35,16 +37,10 @@ def another_user(db_session):
 
 def test_list_all_users_as_admin(client, admin_user, test_user, another_user):
     """Тест получения списка всех пользователей администратором"""
-    login_response = client.post(
-        "/api/v1/auth/login",
-        json={
-            "email": admin_user.email,
-            "password": "admin_hash"  # В реальности нужен правильный пароль
-        }
-    )
-    # Если логин не работает, создадим токен напрямую для теста
     from backend.app.auth.jwt import create_access_token
-    token = create_access_token({"sub": str(admin_user.id)})
+    
+    # Создаем токен напрямую для теста (более надежно чем логин)
+    token = create_access_token({"sub": str(admin_user.id), "type": "access"})
     
     response = client.get(
         "/api/v1/admin/users",
@@ -57,11 +53,12 @@ def test_list_all_users_as_admin(client, admin_user, test_user, another_user):
 
 def test_list_all_users_pagination(client, admin_user, db_session):
     """Тест пагинации списка пользователей"""
+    from backend.app.auth.security import get_password_hash
     # Создаем несколько пользователей
     for i in range(5):
         user = User(
             email=f"user{i}@example.com",
-            password_hash=f"hash{i}",
+            password_hash=get_password_hash(f"password{i}"),
             role=UserRole.USER
         )
         db_session.add(user)

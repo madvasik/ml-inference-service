@@ -3,11 +3,8 @@ from fastapi.testclient import TestClient
 from backend.app.main import app
 import time
 
-
-@pytest.fixture
-def client():
-    """Тестовый клиент"""
-    return TestClient(app)
+# Используем фикстуру client из conftest.py, которая правильно настраивает БД
+# Не нужно определять свой client здесь
 
 
 def test_rate_limit_exception_handling(client):
@@ -37,7 +34,7 @@ def test_rate_limit_cleanup_mechanism():
     middleware._cleanup_old_entries()
     
     # Старые записи должны быть удалены
-    assert "test_key" not in middleware._requests or len(middleware._requests["test_key"]) == 0
+    assert "test_key" not in middleware._requests or len(middleware._requests.get("test_key", [])) == 0
 
 
 def test_rate_limit_user_key_extraction(client, test_user):
@@ -77,6 +74,9 @@ def test_rate_limit_blocked_response(client):
     # Заполняем requests до лимита
     key = "test_key"
     limit = 10
+    # Инициализируем список для ключа
+    if key not in middleware._requests:
+        middleware._requests[key] = []
     for i in range(limit):
         middleware._requests[key].append(time.time())
     

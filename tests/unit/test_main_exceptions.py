@@ -9,63 +9,64 @@ from backend.app.exceptions import (
     PredictionError
 )
 
-
+# Используем фикстуру client из conftest.py для консистентности
+# Но для этих тестов БД не требуется, поэтому можно использовать локальную
 @pytest.fixture
-def client():
-    """Тестовый клиент"""
+def client_no_db():
+    """Тестовый клиент без БД (для тестов исключений, не требующих БД)"""
     return TestClient(app)
 
 
-def test_model_not_found_exception_handler(client):
+def test_model_not_found_exception_handler(client_no_db):
     """Тест обработчика ModelNotFoundError"""
     # Проверяем, что MLServiceException зарегистрирован (он обрабатывает все подклассы)
     assert MLServiceException in app.exception_handlers
 
 
-def test_insufficient_credits_exception_handler(client):
+def test_insufficient_credits_exception_handler(client_no_db):
     """Тест обработчика InsufficientCreditsError"""
     # Проверяем, что MLServiceException зарегистрирован (он обрабатывает все подклассы)
     assert MLServiceException in app.exception_handlers
 
 
-def test_invalid_model_exception_handler(client):
+def test_invalid_model_exception_handler(client_no_db):
     """Тест обработчика InvalidModelError"""
     # Проверяем, что MLServiceException зарегистрирован (он обрабатывает все подклассы)
     assert MLServiceException in app.exception_handlers
 
 
-def test_prediction_error_exception_handler(client):
+def test_prediction_error_exception_handler(client_no_db):
     """Тест обработчика PredictionError"""
     # Проверяем, что MLServiceException зарегистрирован (он обрабатывает все подклассы)
     assert MLServiceException in app.exception_handlers
 
 
-def test_general_exception_handler(client):
+def test_general_exception_handler(client_no_db):
     """Тест общего обработчика исключений"""
     # Проверяем, что общий обработчик зарегистрирован
     assert Exception in app.exception_handlers
 
 
-def test_root_endpoint(client):
+def test_root_endpoint(client_no_db):
     """Тест root endpoint"""
-    response = client.get("/")
+    response = client_no_db.get("/")
     assert response.status_code == 200
     data = response.json()
     assert "message" in data
     assert "version" in data
 
 
-def test_health_endpoint(client):
+def test_health_endpoint(client_no_db):
     """Тест health endpoint"""
-    response = client.get("/health")
+    response = client_no_db.get("/health")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
 
 
-def test_metrics_endpoint(client):
+def test_metrics_endpoint(client_no_db):
     """Тест metrics endpoint"""
-    response = client.get("/metrics")
+    response = client_no_db.get("/metrics")
     assert response.status_code == 200
     assert "text/plain" in response.headers.get("content-type", "")
 
