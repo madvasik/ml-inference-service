@@ -17,6 +17,8 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    task_always_eager=settings.celery_task_always_eager,
+    task_store_eager_result=settings.celery_task_always_eager,
     task_time_limit=300,  # 5 минут для предсказаний
     task_soft_time_limit=270,  # 4.5 минуты мягкий лимит
     worker_prefetch_multiplier=1,

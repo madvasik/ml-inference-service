@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     # Celery
     celery_broker_url: str = "redis://redis:6379/0"
     celery_result_backend: str = "redis://redis:6379/0"
+    celery_task_always_eager: bool = False
     
     # Rate Limiting
     rate_limit_per_minute: int = 1000
@@ -68,7 +69,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    @field_validator("debug", "log_json_format", mode="before")
+    @field_validator("debug", "log_json_format", "celery_task_always_eager", mode="before")
     @classmethod
     def normalize_boolish(cls, value: Any) -> Any:
         return _parse_boolish(value)

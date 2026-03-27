@@ -11,6 +11,7 @@ import numpy as np
 from backend.app.database.base import Base
 from backend.app.database.session import get_db
 from backend.app.main import app
+from backend.app import main as main_module
 from backend.app.models.user import User, UserRole
 from backend.app.models.balance import Balance
 from backend.app.models.ml_model import MLModel
@@ -24,6 +25,17 @@ engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+@pytest.fixture(autouse=True)
+def override_main_session_local():
+    """Подменяет SessionLocal в main.py на тестовую SQLite-сессию."""
+    original_session_local = main_module.SessionLocal
+    main_module.SessionLocal = TestingSessionLocal
+    try:
+        yield
+    finally:
+        main_module.SessionLocal = original_session_local
 
 
 @pytest.fixture(scope="function")

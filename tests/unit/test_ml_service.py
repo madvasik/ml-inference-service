@@ -106,3 +106,17 @@ def test_predict_with_numpy_array_result():
     
     assert "prediction" in result
     assert isinstance(result["prediction"], (int, float, list))
+
+
+def test_predict_supports_string_labels():
+    """Тест предсказания со строковыми классами."""
+    X = np.array([[1, 2], [3, 4], [5, 6]])
+    y = np.array(["cat", "dog", "cat"])
+    model = RandomForestClassifier(n_estimators=10, random_state=42)
+    model.fit(X, y)
+
+    input_data = {"feature1": 1.0, "feature2": 2.0}
+    result = predict(model, input_data)
+
+    assert result["prediction"] in {"cat", "dog"}
+    assert "probabilities" in result

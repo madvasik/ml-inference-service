@@ -7,7 +7,7 @@ from starlette.responses import Response
 import logging
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 from backend.app.api.v1 import auth, users, models, predictions, billing, admin, metrics
 from backend.app.config import settings
 from backend.app.middleware.metrics_middleware import MetricsMiddleware
@@ -91,7 +91,31 @@ def root():
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy"}
+    db_status = "unknown"
+
+    try:
+        db: Session = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+            db_status = "ok"
+        finally:
+            db.close()
+    except Exception as exc:
+        db_status = "error"
+        logger.warning("Health check database probe failed: %s", exc)
+
+    overall_status = "healthy" if db_status == "ok" else "unhealthy"
+    status_code = status.HTTP_200_OK if overall_status == "healthy" else status.HTTP_503_SERVICE_UNAVAILABLE
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": overall_status,
+            "components": {
+                "api": "ok",
+                "database": db_status,
+            },
+        },
+    )
 
 
 @app.get("/metrics")

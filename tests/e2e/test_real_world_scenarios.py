@@ -41,17 +41,7 @@ class ScenarioTestResult:
 
 class RealWorldScenarioTester:
     """Тестер реальных сценариев использования"""
-    
-    def __init__(self):
-        self.results: List[ScenarioTestResult] = []
-        self.base_url = BASE_URL
-        self.prometheus_url = PROMETHEUS_URL
-        self.grafana_url = GRAFANA_URL
-        self.test_users = []
-        self.test_models = {}
-        self.snapshot_before = {}
-        self.snapshot_after = {}
-        
+
     def __init__(self):
         self.results: List[ScenarioTestResult] = []
         self.base_url = BASE_URL

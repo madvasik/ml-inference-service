@@ -1,11 +1,14 @@
 import os
+from pathlib import Path
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from backend.app.api.deps import get_current_user
 from backend.app.database.session import get_db
 from backend.app.models.user import User
 from backend.app.models.ml_model import MLModel
-from backend.app.services.model_loader import validate_model_file, load_model, save_model, get_model_type
+from backend.app.services.model_loader import validate_model_file, load_model, get_model_type
 from backend.app.schemas.model import MLModelResponse, MLModelList
 from backend.app.config import settings
 
@@ -20,8 +23,11 @@ def upload_model(
     db: Session = Depends(get_db)
 ):
     """Загрузка ML модели"""
+    original_filename = file.filename or ""
+    safe_filename = Path(original_filename).name
+
     # Проверка расширения файла
-    if not file.filename or not file.filename.endswith('.pkl'):
+    if not safe_filename or not safe_filename.lower().endswith(".pkl"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only .pkl files are supported"
@@ -56,8 +62,9 @@ def upload_model(
     user_models_dir = os.path.join(settings.ml_models_dir, str(current_user.id))
     os.makedirs(user_models_dir, exist_ok=True)
     
-    # Сохранение временного файла
-    temp_file_path = os.path.join(user_models_dir, f"temp_{file.filename}")
+    # Сохраняем файл под серверным именем, чтобы исключить path traversal и коллизии.
+    temp_file_path = os.path.join(user_models_dir, f"upload_{uuid4().hex}.pkl")
+    stored_file_path = temp_file_path
     try:
         with open(temp_file_path, 'wb') as f:
             content = file.file.read()
@@ -88,6 +95,7 @@ def upload_model(
         # Переименование файла с ID модели
         final_file_path = os.path.join(user_models_dir, f"{db_model.id}.pkl")
         os.rename(temp_file_path, final_file_path)
+        stored_file_path = final_file_path
         db_model.file_path = final_file_path
         db.commit()
         db.refresh(db_model)
@@ -97,8 +105,9 @@ def upload_model(
     except HTTPException:
         raise
     except Exception as e:
-        if os.path.exists(temp_file_path):
-            os.remove(temp_file_path)
+        db.rollback()
+        if os.path.exists(stored_file_path):
+            os.remove(stored_file_path)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload model: {str(e)}"

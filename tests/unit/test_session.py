@@ -1,4 +1,5 @@
 import pytest
+from backend.app.database.base import Base
 from backend.app.database.session import get_db, SessionLocal
 
 
@@ -56,3 +57,18 @@ def test_session_local_creates_sessions():
     # Закрываем сессии
     session1.close()
     session2.close()
+
+
+def test_base_metadata_contains_all_tables():
+    """Тест, что metadata знает о всех таблицах проекта."""
+    expected_tables = {
+        "users",
+        "balances",
+        "ml_models",
+        "predictions",
+        "transactions",
+        "payments",
+        "loyalty_tier_rules",
+    }
+
+    assert expected_tables.issubset(set(Base.metadata.tables))

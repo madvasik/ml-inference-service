@@ -169,6 +169,30 @@ def test_upload_model_invalid_file(client, test_user):
             os.remove(temp_file.name)
 
 
+def test_upload_model_sanitizes_user_supplied_filename(client, test_user, test_model_file):
+    """Тест, что имя файла пользователя не может вывести запись за пределы директории пользователя."""
+    from backend.app.auth.jwt import create_access_token
+    from backend.app.config import settings
+
+    token = create_access_token({"sub": str(test_user.id), "type": "access"})
+    escaped_path = os.path.join(settings.ml_models_dir, "escape.pkl")
+
+    if os.path.exists(escaped_path):
+        os.remove(escaped_path)
+
+    with open(test_model_file, 'rb') as f:
+        response = client.post(
+            "/api/v1/models/upload",
+            headers={"Authorization": f"Bearer {token}"},
+            files={"file": ("../../../escape.pkl", f, "application/octet-stream")},
+            data={"model_name": "safe_model"}
+        )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.json()["file_path"].startswith(os.path.join(settings.ml_models_dir, str(test_user.id)))
+    assert not os.path.exists(escaped_path)
+
+
 def test_upload_model_server_error(client, test_user, test_model_file, monkeypatch):
     """Тест обработки серверной ошибки при загрузке модели"""
     from backend.app.auth.jwt import create_access_token

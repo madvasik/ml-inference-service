@@ -62,6 +62,24 @@ def test_health_endpoint(client_no_db):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
+    assert data["components"]["database"] == "ok"
+
+
+def test_health_endpoint_returns_503_when_database_is_unavailable(client_no_db, monkeypatch):
+    """Тест health endpoint при недоступной БД."""
+    from backend.app import main as main_module
+
+    def broken_session_local():
+        raise RuntimeError("db is down")
+
+    monkeypatch.setattr(main_module, "SessionLocal", broken_session_local)
+
+    response = client_no_db.get("/health")
+
+    assert response.status_code == 503
+    data = response.json()
+    assert data["status"] == "unhealthy"
+    assert data["components"]["database"] == "error"
 
 
 def test_metrics_endpoint(client_no_db):

@@ -6,6 +6,7 @@ import os
 import sys
 import subprocess
 import threading
+from pathlib import Path
 from prometheus_client import start_http_server, multiprocess, CollectorRegistry, generate_latest
 from prometheus_client import CONTENT_TYPE_LATEST
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -17,6 +18,15 @@ os.environ['PROMETHEUS_MULTIPROC_DIR'] = os.getenv('PROMETHEUS_MULTIPROC_DIR', '
 # Создаем директорию для multiprocess метрик если её нет
 if not os.path.exists(os.environ['PROMETHEUS_MULTIPROC_DIR']):
     os.makedirs(os.environ['PROMETHEUS_MULTIPROC_DIR'])
+
+
+def prepare_multiprocess_dir() -> None:
+    """Очищает stale Prometheus файлы перед запуском нового worker."""
+    metrics_dir = Path(os.environ["PROMETHEUS_MULTIPROC_DIR"])
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+    for entry in metrics_dir.iterdir():
+        if entry.is_file():
+            entry.unlink()
 
 class MetricsHandler(BaseHTTPRequestHandler):
     """HTTP handler для метрик с поддержкой multiprocess"""
@@ -52,6 +62,8 @@ def start_metrics_server():
         print(f"✗ Failed to start metrics server: {e}")
 
 if __name__ == "__main__":
+    prepare_multiprocess_dir()
+
     # Запускаем метрики сервер если включено
     if os.getenv("ENABLE_METRICS_SERVER", "false").lower() == "true":
         metrics_thread = threading.Thread(target=start_metrics_server, daemon=True)
