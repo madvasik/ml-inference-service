@@ -66,6 +66,8 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Local notes
+README_FOR_ME.local.md
+
 # Scripts (черновая папка для симуляций и проверок)
 scripts/
-
