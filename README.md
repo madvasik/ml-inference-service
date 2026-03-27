@@ -1,173 +1,225 @@
 # ML Inference Service
 
-Production-ready ML-сервис предсказаний с биллингом на основе кредитов.
+ML-сервис для загрузки `scikit-learn` моделей, асинхронных предсказаний, кредитного биллинга, mock payment gateway, loyalty tiers и мониторинга.
 
-## Описание
+## Что внутри
 
-Масштабируемый REST API сервис для выполнения ML-предсказаний через scikit-learn модели. Пользователи загружают модели, выполняют предсказания и платят внутренними кредитами.
+- `FastAPI` backend с JWT-аутентификацией и OpenAPI/Swagger.
+- Асинхронные предсказания через `Celery + Redis`.
+- `PostgreSQL + SQLAlchemy + Alembic`.
+- Кредитный биллинг с audit trail в `transactions`.
+- Mock payment gateway по схеме `payment intent -> confirm`.
+- Loyalty tiers: `Bronze / Silver / Gold` со скидками `5 / 10 / 20%`.
+- `Prometheus + Grafana` для метрик и `Streamlit` для admin dashboard.
 
-## Технологический стек
+## Loyalty policy
 
-- **Backend**: FastAPI, Python 3.11+
-- **База данных**: PostgreSQL, SQLAlchemy, Alembic
-- **ML**: Scikit-learn
-- **Аутентификация**: JWT
-- **Асинхронные задачи**: Celery + Redis
-- **Мониторинг**: Prometheus + Grafana
-- **Тестирование**: Pytest (95.52% coverage)
+- `Bronze`: от `50` успешных предсказаний за прошлый календарный месяц, скидка `5%`.
+- `Silver`: от `200`, скидка `10%`.
+- `Gold`: от `500`, скидка `20%`.
+- Пересчет выполняется задачей `Celery Beat` в `00:05 UTC` первого числа каждого месяца.
+- Стоимость prediction snapshot’ится в момент создания запроса: дальнейшая смена tier не меняет уже созданные предсказания.
+
+## Payment flow
+
+- Канонический API:
+  - `POST /api/v1/billing/payments` создает payment intent.
+  - `POST /api/v1/billing/payments/{payment_id}/confirm` подтверждает mock payment и начисляет кредиты.
+- Для обратной совместимости сохранен `POST /api/v1/billing/topup`: он внутри делает `create + confirm`.
+- В этой реализации `1 amount = 1 credit`.
 
 ## Быстрый старт
 
 ### Docker Compose
 
 ```bash
-git clone <repository-url>
-cd ml-inference-service
 cp .env.example .env
-docker-compose up -d
+docker compose up -d --build
 ```
 
-**Сервисы:**
+Сервисы:
+
 - API: `http://localhost:8000`
 - Swagger: `http://localhost:8000/docs`
-- Streamlit Admin: `http://localhost:8501`
+- Streamlit admin: `http://localhost:8501`
 - Prometheus: `http://localhost:9090`
-- Grafana: `http://localhost:3000` (admin/admin)
+- Grafana: `http://localhost:3000`
+
+Admin bootstrap:
+
+- Email: `${INITIAL_ADMIN_EMAIL}` из `.env`
+- Password: `${INITIAL_ADMIN_PASSWORD}` из `.env`
+- По умолчанию: `admin@mlservice.com / admin123`
 
 ### Локальная разработка
 
+`.env.example` настроен под host-run (`localhost` для Postgres/Redis). Compose сам подставляет внутренние Docker hostnames.
+
 ```bash
+python3 -m venv venv
+source venv/bin/activate
 pip install -r backend/requirements.txt
 alembic upgrade head
 uvicorn backend.app.main:app --reload
 ```
 
-## API Endpoints
-
-### Auth
-- `POST /api/v1/auth/register` - Регистрация
-- `POST /api/v1/auth/login` - Вход
-- `POST /api/v1/auth/refresh` - Обновление токена
-
-### Models
-- `POST /api/v1/models/upload` - Загрузка модели
-- `GET /api/v1/models` - Список моделей
-- `GET /api/v1/models/{id}` - Информация о модели
-- `DELETE /api/v1/models/{id}` - Удаление модели
-
-### Predictions
-- `POST /api/v1/predictions` - Создание предсказания (асинхронно)
-- `GET /api/v1/predictions` - Список предсказаний
-- `GET /api/v1/predictions/{id}` - Статус предсказания
-
-### Billing
-- `GET /api/v1/billing/balance` - Баланс кредитов
-- `POST /api/v1/billing/topup` - Пополнение баланса
-- `GET /api/v1/billing/transactions` - История транзакций
-
-### Admin
-- `GET /api/v1/admin/users` - Все пользователи
-- `GET /api/v1/admin/predictions` - Все предсказания (с фильтрами)
-- `GET /api/v1/admin/transactions` - Все транзакции
-
-**Аутентификация:** Все защищенные endpoints требуют `Authorization: Bearer <token>`
-
-## Примеры использования
-
-### Регистрация и создание предсказания
+Отдельно для Streamlit:
 
 ```bash
-# Регистрация
-curl -X POST "http://localhost:8000/api/v1/auth/register" \
-  -H "Content-Type: application/json" \
-  -d '{"email": "user@example.com", "password": "password123"}'
+pip install -r streamlit_dashboard/requirements.txt
+BASE_URL=http://localhost:8000 streamlit run streamlit_dashboard/main.py
+```
 
-# Пополнение баланса
-curl -X POST "http://localhost:8000/api/v1/billing/topup" \
+## Основные API endpoints
+
+### Auth
+
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/refresh`
+- `GET /api/v1/users/me`
+
+### Models
+
+- `POST /api/v1/models/upload`
+- `GET /api/v1/models`
+- `GET /api/v1/models/{id}`
+- `DELETE /api/v1/models/{id}`
+
+### Predictions
+
+- `POST /api/v1/predictions`
+- `GET /api/v1/predictions`
+- `GET /api/v1/predictions/{id}`
+
+`PredictionResponse` дополнительно возвращает:
+
+- `task_id`
+- `base_cost`
+- `discount_percent`
+- `discount_amount`
+- `credits_spent`
+- `completed_at`
+- `failure_reason`
+
+### Billing
+
+- `GET /api/v1/billing/balance`
+- `POST /api/v1/billing/topup`
+- `POST /api/v1/billing/payments`
+- `POST /api/v1/billing/payments/{payment_id}/confirm`
+- `GET /api/v1/billing/payments`
+- `GET /api/v1/billing/transactions`
+
+### Admin
+
+- `GET /api/v1/admin/users`
+- `GET /api/v1/admin/users/{user_id}`
+- `GET /api/v1/admin/predictions`
+- `GET /api/v1/admin/predictions/{prediction_id}`
+- `GET /api/v1/admin/transactions`
+- `GET /api/v1/admin/payments`
+
+## Пример сценария
+
+```bash
+# 1. Регистрация
+curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","password":"password123"}'
+
+# 2. Создание payment intent
+curl -X POST http://localhost:8000/api/v1/billing/payments \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"amount": 100}'
+  -d '{"amount":100}'
 
-# Загрузка модели
-curl -X POST "http://localhost:8000/api/v1/models/upload" \
+# 3. Confirm payment
+curl -X POST http://localhost:8000/api/v1/billing/payments/1/confirm \
+  -H "Authorization: Bearer <token>"
+
+# 4. Upload model
+curl -X POST http://localhost:8000/api/v1/models/upload \
   -H "Authorization: Bearer <token>" \
   -F "file=@model.pkl" \
   -F "model_name=my_model"
 
-# Создание предсказания
-curl -X POST "http://localhost:8000/api/v1/predictions" \
+# 5. Create async prediction
+curl -X POST http://localhost:8000/api/v1/predictions \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{
-    "model_id": 1,
-    "input_data": {"feature1": 1.5, "feature2": 2.3}
-  }'
+  -d '{"model_id":1,"input_data":{"feature1":1.5,"feature2":2.3}}'
 ```
 
 ## Тестирование
 
 ```bash
-# Все тесты
-pytest
-
-# С покрытием
-pytest --cov=backend/app --cov-report=html
-
-# E2E тесты реальных сценариев
-BASE_URL=http://localhost:8000 python3 scripts/testing/test_real_world_scenarios.py
+venv/bin/pytest
 ```
 
-**Результаты:**
-- 151 unit тест пройден
-- 22 E2E сценария пройдены
-- Покрытие кода: 95.52%
+Полезные наборы:
 
-## Переменные окружения
-
-Основные переменные (см. `.env.example`):
-
-```env
-DATABASE_URL=postgresql://user:password@postgres:5432/ml_service
-SECRET_KEY=your-secret-key
-REDIS_URL=redis://redis:6379/0
-PREDICTION_COST=10
-RATE_LIMIT_PER_MINUTE=1000
+```bash
+venv/bin/pytest tests/unit/test_billing.py
+venv/bin/pytest tests/unit/test_predictions.py
+venv/bin/pytest tests/unit/test_loyalty_service.py
 ```
 
-## Архитектура
+E2E-скрипты находятся в `scripts/testing/`. Для них нужны поднятые сервисы через Docker Compose.
 
-```
-Client → FastAPI Backend → Celery Worker → Redis
-              ↓                ↓
-          PostgreSQL      ml_models/
-              ↓
-         Prometheus → Grafana
-```
+## Monitoring
+
+- Backend и Celery экспортируют Prometheus metrics.
+- Grafana dashboard показывает:
+  - активных пользователей,
+  - confirmed payments,
+  - discounted credits,
+  - prediction throughput и latency,
+  - billing transaction rate,
+  - loyalty tier distribution,
+  - prediction errors.
 
 ## Структура проекта
 
+```text
+backend/app/
+  api/v1/          REST endpoints
+  billing/         billing helpers
+  models/          SQLAlchemy models
+  schemas/         Pydantic schemas
+  services/        loyalty/payment/bootstrap logic
+  tasks/           Celery worker + beat tasks
+
+alembic/           DB migrations
+streamlit_dashboard/
+grafana/
+prometheus/
+tests/
+scripts/testing/   smoke и e2e утилиты
 ```
-ml-inference-service/
-├── backend/app/          # FastAPI приложение
-│   ├── api/v1/          # API endpoints
-│   ├── models/          # SQLAlchemy модели
-│   ├── services/        # Бизнес-логика
-│   └── tasks/           # Celery задачи
-├── tests/               # Тесты (95.52% coverage)
-├── scripts/testing/     # E2E тесты реальных сценариев
-├── docker-compose.yml   # Docker конфигурация
-└── README.md
-```
 
-## Основные возможности
+## Бизнес-план
 
-- ✅ Асинхронная обработка предсказаний через Celery
-- ✅ Биллинг с атомарным списанием кредитов
-- ✅ Rate limiting и безопасность
-- ✅ Мониторинг через Prometheus/Grafana
-- ✅ Админ панель на Streamlit
-- ✅ Полное тестовое покрытие
+УТП:
 
-## Лицензия
+- self-service inference для команд, которым нужен быстрый REST-слой поверх `scikit-learn` без самостоятельной сборки очередей, биллинга и мониторинга.
 
-MIT
+Целевая аудитория:
+
+- команды data science,
+- internal platform teams,
+- образовательные и pet-project use cases,
+- B2B SaaS, где нужно быстро монетизировать inference по кредитной модели.
+
+Финмодель:
+
+- базовая единица монетизации — кредиты;
+- пополнение идет через payment intents;
+- скидки loyalty tiers стимулируют частое использование;
+- маржа формируется за счет разницы между ценой кредитов и инфраструктурной стоимостью prediction workload.
+
+## Примечания
+
+- Full Docker smoke (`docker compose up -d --build` + end-to-end flow) требует доступного Docker daemon.
+- Администратор создается автоматически, если заданы `INITIAL_ADMIN_EMAIL` и `INITIAL_ADMIN_PASSWORD`.
+- `/api/v1/billing/topup` сохранен как compatibility wrapper, но для новых интеграций рекомендуется использовать `payments` endpoints.

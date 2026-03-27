@@ -4,12 +4,13 @@ from sqlalchemy import desc
 from typing import Optional
 from backend.app.api.deps import get_current_admin
 from backend.app.database.session import get_db
+from backend.app.models.payment import Payment
 from backend.app.models.user import User
 from backend.app.models.prediction import Prediction
 from backend.app.models.transaction import Transaction
 from backend.app.schemas.user import UserResponse
+from backend.app.schemas.billing import PaymentList, TransactionList
 from backend.app.schemas.prediction import PredictionResponse, PredictionList
-from backend.app.schemas.billing import TransactionList
 
 router = APIRouter()
 
@@ -101,3 +102,22 @@ def list_all_transactions(
     transactions = query.order_by(desc(Transaction.created_at)).offset(skip).limit(limit).all()
     
     return TransactionList(transactions=transactions, total=total)
+
+
+@router.get("/payments", response_model=PaymentList)
+def list_all_payments(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    user_id: Optional[int] = Query(None, description="Фильтр по user_id"),
+    current_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Получение списка всех платежей (только для администраторов)"""
+    query = db.query(Payment)
+
+    if user_id:
+        query = query.filter(Payment.user_id == user_id)
+
+    total = query.count()
+    payments = query.order_by(desc(Payment.created_at)).offset(skip).limit(limit).all()
+    return PaymentList(payments=payments, total=total)

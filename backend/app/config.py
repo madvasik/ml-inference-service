@@ -1,5 +1,20 @@
+from typing import Any, Optional
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
+
+
+def _parse_boolish(value: Any) -> Any:
+    if isinstance(value, bool) or value is None:
+        return value
+
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on", "debug", "development"}:
+            return True
+        if normalized in {"0", "false", "no", "off", "release", "prod", "production"}:
+            return False
+    return value
 
 
 class Settings(BaseSettings):
@@ -41,11 +56,22 @@ class Settings(BaseSettings):
     
     # Logging
     log_json_format: bool = False  # Использовать JSON формат для логирования
+
+    # Bootstrap admin
+    initial_admin_email: Optional[str] = None
+    initial_admin_password: Optional[str] = None
+    initial_admin_credits: int = 10000
     
     model_config = SettingsConfigDict(
         env_file=".env",
-        case_sensitive=False
+        case_sensitive=False,
+        extra="ignore",
     )
+
+    @field_validator("debug", "log_json_format", mode="before")
+    @classmethod
+    def normalize_boolish(cls, value: Any) -> Any:
+        return _parse_boolish(value)
 
 
 settings = Settings()

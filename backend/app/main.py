@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -13,6 +14,8 @@ from backend.app.middleware.metrics_middleware import MetricsMiddleware
 from backend.app.middleware.rate_limit import RateLimitMiddleware
 from backend.app.database.session import SessionLocal
 from backend.app.models.prediction import Prediction
+from backend.app.services.bootstrap_service import ensure_initial_admin
+from backend.app.services.loyalty_service import ensure_default_loyalty_rules, refresh_loyalty_metrics
 from backend.app.monitoring.metrics import active_users
 from backend.app.exceptions import (
     MLServiceException,
@@ -28,10 +31,30 @@ setup_logging(debug=settings.debug, json_format=settings.log_json_format)
 
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Инициализация данных приложения при старте."""
+    try:
+        db: Session = SessionLocal()
+        try:
+            ensure_default_loyalty_rules(db)
+            admin_user = ensure_initial_admin(db)
+            refresh_loyalty_metrics(db)
+            if admin_user:
+                logger.info("Initial admin ensured: %s", admin_user.email)
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("Startup bootstrap failed: %s", exc)
+    yield
+
+
 app = FastAPI(
     title="ML Inference Service",
     description="ML prediction service with billing",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS middleware
@@ -83,6 +106,7 @@ def metrics():
                 Prediction.created_at >= cutoff_time
             ).scalar() or 0
             active_users.set(unique_users)
+            refresh_loyalty_metrics(db)
         finally:
             db.close()
     except Exception as e:

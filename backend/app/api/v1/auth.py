@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from backend.app.database.session import get_db
-from backend.app.models.user import User, UserRole
+from backend.app.models.user import LoyaltyTier, User, UserRole
 from backend.app.models.balance import Balance
 from backend.app.auth.security import verify_password, get_password_hash
 from backend.app.auth.jwt import create_access_token, create_refresh_token, decode_token
@@ -26,7 +26,9 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
     user = User(
         email=user_data.email,
         password_hash=get_password_hash(user_data.password),
-        role=UserRole.USER
+        role=UserRole.USER,
+        loyalty_tier=LoyaltyTier.NONE,
+        loyalty_discount_percent=0,
     )
     db.add(user)
     db.flush()

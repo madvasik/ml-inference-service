@@ -1,151 +1,74 @@
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from sqlalchemy.orm import Session
-from backend.app.tasks.prediction_tasks import execute_prediction
+from unittest.mock import Mock, patch
+
 from backend.app.models.prediction import Prediction, PredictionStatus
-from backend.app.models.ml_model import MLModel
-from backend.app.models.user import User
+from backend.app.tasks.prediction_tasks import execute_prediction
 
 
-@pytest.fixture
-def mock_db():
-    """Мок для сессии БД"""
-    db = Mock(spec=Session)
-    return db
-
-
-@pytest.fixture
-def mock_prediction():
-    """Мок для предсказания"""
-    prediction = Mock(spec=Prediction)
-    prediction.id = 1
-    prediction.status = PredictionStatus.PENDING
-    prediction.result = None
-    prediction.credits_spent = 0
+def _create_prediction(db_session, test_user, test_ml_model, credits_spent: int = 10) -> Prediction:
+    prediction = Prediction(
+        user_id=test_user.id,
+        model_id=test_ml_model.id,
+        input_data={"feature1": 1.5},
+        status=PredictionStatus.PENDING,
+        base_cost=10,
+        discount_percent=0,
+        discount_amount=0,
+        credits_spent=credits_spent,
+    )
+    db_session.add(prediction)
+    db_session.commit()
+    db_session.refresh(prediction)
     return prediction
 
 
-@pytest.fixture
-def mock_model():
-    """Мок для модели"""
-    model = Mock(spec=MLModel)
-    model.id = 1
-    model.file_path = "/test/model.pkl"
-    return model
-
-
-@patch('backend.app.tasks.prediction_tasks.load_model')
-@patch('backend.app.tasks.prediction_tasks.predict')
-@patch('backend.app.tasks.prediction_tasks.deduct_credits')
-def test_execute_prediction_success(
-    mock_deduct_credits,
-    mock_predict,
-    mock_load_model,
-    mock_db,
-    mock_prediction,
-    mock_model
-):
-    """Тест успешного выполнения предсказания"""
-    # Настройка моков
-    mock_db.query.return_value.filter.return_value.first.side_effect = [
-        mock_prediction,  # Для prediction
-        mock_model  # Для model
-    ]
-    
-    mock_ml_model = Mock()
-    mock_load_model.return_value = mock_ml_model
+@patch("backend.app.tasks.prediction_tasks.load_model")
+@patch("backend.app.tasks.prediction_tasks.predict")
+@patch("backend.app.tasks.prediction_tasks.charge_prediction")
+def test_execute_prediction_success(mock_charge_prediction, mock_predict, mock_load_model, db_session, test_user, test_ml_model):
+    prediction = _create_prediction(db_session, test_user, test_ml_model)
+    mock_load_model.return_value = Mock()
     mock_predict.return_value = {"prediction": [0.85]}
-    mock_deduct_credits.return_value = True
-    
-    # Создаем задачу и мокируем db через _db
+    mock_charge_prediction.return_value = (True, Mock())
+
     task = execute_prediction
-    task._db = mock_db
-    
-    # Выполняем задачу
-    result = task.run(
-        prediction_id=1,
-        model_id=1,
-        user_id=1,
-        input_data={"feature1": 1.5}
-    )
-    
-    # Проверки
+    task._db = db_session
+
+    result = task.run(prediction_id=prediction.id)
+
     assert result["status"] == "completed"
-    assert result["prediction_id"] == 1
-    assert "result" in result
-    mock_deduct_credits.assert_called_once()
-    mock_db.commit.assert_called()
+    db_session.refresh(prediction)
+    assert prediction.status == PredictionStatus.COMPLETED
 
 
-@patch('backend.app.tasks.prediction_tasks.load_model')
-def test_execute_prediction_model_not_found(
-    mock_load_model,
-    mock_db,
-    mock_prediction
-):
-    """Тест обработки случая, когда модель не найдена"""
-    # Настройка моков
-    mock_db.query.return_value.filter.return_value.first.side_effect = [
-        mock_prediction,  # Для prediction
-        None  # Для model - не найдена
-    ]
-    
-    # Создаем задачу и мокируем db через _db
+def test_execute_prediction_model_not_found(db_session, test_user, test_ml_model):
+    prediction = _create_prediction(db_session, test_user, test_ml_model)
+    prediction.model_id = 99999
+    db_session.commit()
+
     task = execute_prediction
-    task._db = mock_db
-    
-    # Выполняем задачу
-    result = task.run(
-        prediction_id=1,
-        model_id=999,
-        user_id=1,
-        input_data={"feature1": 1.5}
-    )
-    
-    # Проверки
+    task._db = db_session
+
+    result = task.run(prediction_id=prediction.id)
+
     assert result["status"] == "failed"
-    assert "error" in result
-    assert mock_prediction.status == PredictionStatus.FAILED
-    mock_db.commit.assert_called()
+    db_session.refresh(prediction)
+    assert prediction.failure_reason == "model_not_found"
 
 
-@patch('backend.app.tasks.prediction_tasks.load_model')
-@patch('backend.app.tasks.prediction_tasks.predict')
-@patch('backend.app.tasks.prediction_tasks.deduct_credits')
-def test_execute_prediction_insufficient_credits(
-    mock_deduct_credits,
-    mock_predict,
-    mock_load_model,
-    mock_db,
-    mock_prediction,
-    mock_model
-):
-    """Тест обработки недостаточного баланса"""
-    # Настройка моков
-    mock_db.query.return_value.filter.return_value.first.side_effect = [
-        mock_prediction,
-        mock_model
-    ]
-    
-    mock_ml_model = Mock()
-    mock_load_model.return_value = mock_ml_model
+@patch("backend.app.tasks.prediction_tasks.load_model")
+@patch("backend.app.tasks.prediction_tasks.predict")
+@patch("backend.app.tasks.prediction_tasks.charge_prediction")
+def test_execute_prediction_insufficient_credits(mock_charge_prediction, mock_predict, mock_load_model, db_session, test_user, test_ml_model):
+    prediction = _create_prediction(db_session, test_user, test_ml_model)
+    mock_load_model.return_value = Mock()
     mock_predict.return_value = {"prediction": [0.85]}
-    mock_deduct_credits.return_value = False  # Недостаточно кредитов
-    
-    # Создаем задачу и мокируем db через _db
+    mock_charge_prediction.return_value = (False, None)
+
     task = execute_prediction
-    task._db = mock_db
-    
-    # Выполняем задачу
-    result = task.run(
-        prediction_id=1,
-        model_id=1,
-        user_id=1,
-        input_data={"feature1": 1.5}
-    )
-    
-    # Проверки
+    task._db = db_session
+
+    result = task.run(prediction_id=prediction.id)
+
     assert result["status"] == "failed"
-    assert "error" in result
-    assert mock_prediction.status == PredictionStatus.FAILED
-    mock_db.commit.assert_called()
+    db_session.refresh(prediction)
+    assert prediction.failure_reason == "insufficient_credits"

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from backend.app.database.session import get_db
 from backend.app.models.prediction import Prediction
 from backend.app.monitoring.metrics import active_users
+from backend.app.services.loyalty_service import refresh_loyalty_metrics
 
 router = APIRouter()
 
@@ -25,5 +26,6 @@ def update_active_users_metric(db: Session = Depends(get_db)):
     
     # Обновляем метрику
     active_users.set(unique_users)
+    refresh_loyalty_metrics(db)
     
     return {"active_users": unique_users, "updated_at": datetime.now(timezone.utc).isoformat()}

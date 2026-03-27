@@ -1,108 +1,69 @@
-# Структура тестов
+# Tests
 
-Все файлы, относящиеся к тестированию, находятся в этой директории.
+В проекте есть unit, integration и e2e уровни проверки.
 
-## Структура директорий
+## Структура
 
-```
+```text
 tests/
-├── README.md              # Документация
-├── conftest.py            # Общие фикстуры pytest
-├── test_results.log       # Результаты последнего прогона тестов (полный лог)
-├── test_results.json      # JSON сводка результатов
-├── test_results.xml       # XML отчет для CI/CD
-│
-├── unit/                  # Этап 1: Юнит тесты
-│   └── test_*.py
-│
-├── integration/           # Интеграционные тесты
-│   └── test_integration.py
-│
-├── e2e/                   # Этап 2: E2E тесты
-│   ├── test_real_world_scenarios.py
-│   ├── test_no_crashes.py
-│   ├── test_user_flows.py
-│   └── utils/
-│       └── common_logging.py
-│
-└── utils/                 # Утилиты тестирования
-    ├── run_staged.py      # Скрипт поэтапного запуска
-    └── common_logging.py
+  conftest.py
+  unit/
+  integration/
+  e2e/
+  utils/
 ```
 
-## Этапы тестирования
+## Основные команды
 
-### Этап 1: Юнит тесты
-**Маркер**: `stage1_unit`  
-**Директория**: `tests/unit/`  
-**Запуск**: `pytest -m stage1_unit`
-
-Быстрые изолированные тесты отдельных компонентов системы.
-
-### Этап 2: E2E сценарии
-**Маркер**: `stage2_e2e`  
-**Файл**: `tests/e2e/test_real_world_scenarios.py`  
-**Запуск**: `python tests/e2e/test_real_world_scenarios.py`
-
-Комплексные тесты реальных пользовательских сценариев.
-
-## Поэтапный запуск всех тестов
+### Полный pytest suite
 
 ```bash
-# Из корня проекта
-python tests/utils/run_staged.py
-
-# Или как модуль
-python -m tests.utils.run_staged
+venv/bin/pytest
 ```
 
-## Запуск отдельных этапов
+### Только unit/integration через pytest
 
 ```bash
-# Этап 1
-pytest -m stage1_unit
-
-# Этап 2
-python tests/e2e/test_real_world_scenarios.py
+venv/bin/pytest tests/unit
+venv/bin/pytest tests/integration
 ```
 
-## Утилиты
+### E2E/real-world проверки
 
-### run_staged.py
-Скрипт для поэтапного запуска всех тестов с цветным выводом и сводкой результатов.
+Эти тесты требуют поднятые сервисы и находятся в `scripts/testing/` и `tests/e2e/`.
 
-### common_logging.py
-Общие утилиты для логирования в тестах (находится в `tests/utils/` и `tests/e2e/utils/`).
-
-## Требования
-
-### Для этапа 1
-- Python 3.8+
-- Установленные зависимости
-- Никаких внешних сервисов не требуется
-
-### Для этапа 2
-Требуются запущенные сервисы:
-- Backend API (localhost:8000)
-- Prometheus (localhost:9090)
-- Celery Worker
-- PostgreSQL
-
-## Результаты тестирования
-
-Результаты последнего прогона тестов сохраняются в файлах:
-- `test_results.log` - полный лог выполнения тестов (дублирует консольный вывод)
-- `test_results.json` - JSON файл со структурированными данными
-- `test_results.xml` - XML отчет для CI/CD систем
-
-**Важно:** Файлы перезаписываются при каждом запуске тестов.
-
-Файл `test_results.log` содержит весь вывод тестов в реальном времени, полностью дублируя то, что выводится в консоль.
-
-## Переменные окружения
+Примеры:
 
 ```bash
-export BASE_URL=http://localhost:8000
-export PROMETHEUS_URL=http://localhost:9090
-export GRAFANA_URL=http://localhost:3000
+BASE_URL=http://localhost:8000 python3 scripts/testing/test_no_crashes.py
+
+BASE_URL=http://localhost:8000 \
+PROMETHEUS_URL=http://localhost:9090 \
+GRAFANA_URL=http://localhost:3000 \
+python3 scripts/testing/test_real_world_scenarios.py
 ```
+
+## Что покрыто
+
+- JWT auth и permissions
+- models upload / CRUD
+- async prediction flow
+- billing helpers и payment intents
+- loyalty recalculation
+- admin API
+- middleware и metrics
+
+## Полезные наборы
+
+```bash
+venv/bin/pytest tests/unit/test_billing.py
+venv/bin/pytest tests/unit/test_predictions.py
+venv/bin/pytest tests/unit/test_prediction_tasks.py
+venv/bin/pytest tests/unit/test_loyalty_service.py
+```
+
+## Примечания
+
+- Порог покрытия на `pytest` задан в `pytest.ini` и должен оставаться выше `70%`.
+- Для локального запуска backend тестам не нужен поднятый Docker stack.
+- Для full smoke через Docker используйте `docker compose up -d --build` и затем e2e-скрипты из `scripts/testing/`.

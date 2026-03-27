@@ -9,6 +9,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from backend.app.database.base import Base
+from backend.app import models  # noqa: F401
 from backend.app.config import settings
 
 # this is the Alembic Config object, which provides

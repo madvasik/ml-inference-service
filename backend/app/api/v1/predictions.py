@@ -1,17 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
+
 from backend.app.api.deps import get_current_user
+from backend.app.billing.service import build_prediction_cost_snapshot, get_balance
 from backend.app.database.session import get_db
 from backend.app.models.user import User
 from backend.app.models.ml_model import MLModel
 from backend.app.models.prediction import Prediction, PredictionStatus
-from backend.app.services.model_loader import load_model
-from backend.app.services.ml_service import predict
-from backend.app.billing.service import deduct_credits, get_balance
+from backend.app.services.loyalty_service import get_loyalty_snapshot
 from backend.app.schemas.prediction import PredictionCreate, PredictionResponse, PredictionList, PredictionTaskResponse
 from backend.app.tasks.prediction_tasks import execute_prediction
 from backend.app.config import settings
-from backend.app.monitoring.metrics import active_users
 
 router = APIRouter()
 
@@ -40,34 +39,47 @@ def create_prediction(
     request.state.model_id = str(prediction_data.model_id)
     
     # Проверка баланса
+    loyalty_snapshot = get_loyalty_snapshot(current_user)
+    discount_amount, final_cost = build_prediction_cost_snapshot(
+        settings.prediction_cost,
+        loyalty_snapshot.discount_percent,
+    )
     balance = get_balance(db, current_user.id)
-    if balance < settings.prediction_cost:
+    if balance < final_cost:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail=f"Insufficient balance. Required: {settings.prediction_cost}, Available: {balance}"
+            detail=f"Insufficient balance. Required: {final_cost}, Available: {balance}"
         )
-    
-    # Метрика active_users будет обновляться через периодическую задачу или endpoint
-    
+
     # Создание записи предсказания
     prediction = Prediction(
         user_id=current_user.id,
         model_id=prediction_data.model_id,
         input_data=prediction_data.input_data,
         status=PredictionStatus.PENDING,
-        credits_spent=0
+        base_cost=settings.prediction_cost,
+        discount_percent=loyalty_snapshot.discount_percent,
+        discount_amount=discount_amount,
+        credits_spent=final_cost,
+        failure_reason=None,
     )
     db.add(prediction)
     db.commit()
     db.refresh(prediction)
-    
-    # Запуск асинхронной задачи
-    task = execute_prediction.delay(
-        prediction_id=prediction.id,
-        model_id=prediction_data.model_id,
-        user_id=current_user.id,
-        input_data=prediction_data.input_data
-    )
+
+    try:
+        task = execute_prediction.delay(prediction_id=prediction.id)
+        prediction.task_id = task.id
+        db.commit()
+        db.refresh(prediction)
+    except Exception:
+        prediction.status = PredictionStatus.FAILED
+        prediction.failure_reason = "queue_unavailable"
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Prediction queue is unavailable. Please try again later.",
+        )
     
     return PredictionTaskResponse(
         task_id=task.id,

@@ -27,8 +27,25 @@ billing_transactions_total = Counter(
     ["type"]  # credit или debit
 )
 
+payment_intents_total = Counter(
+    "payment_intents_total",
+    "Total number of payment intents processed",
+    ["status", "provider"]
+)
+
+prediction_discount_credits_total = Counter(
+    "prediction_discount_credits_total",
+    "Total number of discounted credits granted"
+)
+
 # Метрики для пользователей
 active_users = Gauge(
     "active_users",
     "Number of active users"
+)
+
+loyalty_users_total = Gauge(
+    "loyalty_users_total",
+    "Number of users in each loyalty tier",
+    ["tier"]
 )

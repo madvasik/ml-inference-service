@@ -9,6 +9,13 @@ class UserRole(str, enum.Enum):
     ADMIN = "admin"
 
 
+class LoyaltyTier(str, enum.Enum):
+    NONE = "none"
+    BRONZE = "bronze"
+    SILVER = "silver"
+    GOLD = "gold"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -16,4 +23,7 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
     role = Column(Enum(UserRole), default=UserRole.USER, nullable=False)
+    loyalty_tier = Column(Enum(LoyaltyTier), default=LoyaltyTier.NONE, nullable=False)
+    loyalty_discount_percent = Column(Integer, default=0, nullable=False)
+    loyalty_updated_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

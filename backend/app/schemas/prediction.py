@@ -16,7 +16,13 @@ class PredictionResponse(BaseModel):
     input_data: Dict[str, Any]
     result: Dict[str, Any] | None
     status: PredictionStatus
+    task_id: str | None
+    base_cost: int
+    discount_percent: int
+    discount_amount: int
     credits_spent: int
+    completed_at: datetime | None
+    failure_reason: str | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

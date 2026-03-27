@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import json
+import os
 
 # Конфигурация страницы
 st.set_page_config(
@@ -14,10 +15,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Определение BASE_URL в зависимости от окружения
-import os
 BASE_URL = os.getenv("BASE_URL", "http://backend:8000")  # Внутри Docker сети
-# Для локального запуска: BASE_URL = "http://localhost:8000"
+DEFAULT_ADMIN_EMAIL = os.getenv("INITIAL_ADMIN_EMAIL", "admin@mlservice.com")
+DEFAULT_ADMIN_PASSWORD = os.getenv("INITIAL_ADMIN_PASSWORD", "admin123")
 
 
 def init_session_state():
@@ -125,6 +125,27 @@ def fetch_transactions(user_id: int = None):
         return {'transactions': [], 'total': 0}
 
 
+def fetch_payments(user_id: int = None):
+    """Получение платежей (для админа - все платежи)."""
+    try:
+        params = {}
+        if user_id:
+            params["user_id"] = user_id
+
+        response = requests.get(
+            f"{BASE_URL}/api/v1/admin/payments",
+            headers=get_headers(),
+            params=params,
+            timeout=5
+        )
+        if response.status_code == 200:
+            return response.json()
+        return {"payments": [], "total": 0}
+    except Exception as e:
+        st.error(f"Ошибка получения платежей: {str(e)}")
+        return {"payments": [], "total": 0}
+
+
 def main():
     init_session_state()
     
@@ -133,8 +154,8 @@ def main():
         st.title("🔐 Вход")
         
         if st.session_state.token is None:
-            email = st.text_input("Email", value="admin@mlservice.com")
-            password = st.text_input("Пароль", type="password", value="admin123")
+            email = st.text_input("Email", value=DEFAULT_ADMIN_EMAIL)
+            password = st.text_input("Пароль", type="password", value=DEFAULT_ADMIN_PASSWORD)
             
             if st.button("Войти", type="primary"):
                 if login(email, password):
@@ -167,7 +188,7 @@ def main():
     st.title("📊 ML Service Admin Panel")
     
     # Вкладки
-    tab1, tab2, tab3, tab4 = st.tabs(["👥 Пользователи", "🔮 Предсказания", "💰 Транзакции", "📈 Статистика"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["👥 Пользователи", "🔮 Предсказания", "💳 Платежи", "💰 Транзакции", "📈 Статистика"])
     
     with tab1:
         st.header("Список всех пользователей")
@@ -185,8 +206,8 @@ def main():
                 admins = len(df_users[df_users['role'] == 'admin'])
                 st.metric("Администраторов", admins)
             with col3:
-                regular_users = len(df_users[df_users['role'] == 'user'])
-                st.metric("Обычных пользователей", regular_users)
+                gold_users = len(df_users[df_users['loyalty_tier'] == 'gold']) if 'loyalty_tier' in df_users else 0
+                st.metric("Gold пользователей", gold_users)
             
             # График регистраций по датам
             if len(df_users) > 0:
@@ -200,7 +221,7 @@ def main():
             # Таблица пользователей
             st.subheader("Детальная информация")
             st.dataframe(
-                df_users[['id', 'email', 'role', 'created_at']],
+                df_users[['id', 'email', 'role', 'loyalty_tier', 'loyalty_discount_percent', 'created_at']],
                 use_container_width=True,
                 hide_index=True
             )
@@ -254,6 +275,9 @@ def main():
             with col4:
                 total_credits = df_pred['credits_spent'].sum()
                 st.metric("Всего кредитов потрачено", total_credits)
+            with st.container():
+                total_discount = df_pred['discount_amount'].sum() if 'discount_amount' in df_pred else 0
+                st.metric("Суммарная скидка", total_discount)
             
             # Графики
             col1, col2 = st.columns(2)
@@ -303,12 +327,55 @@ def main():
                         'input_data': json.loads(str(selected_pred['input_data'])) if isinstance(selected_pred['input_data'], str) else selected_pred['input_data'],
                         'result': json.loads(str(selected_pred['result'])) if isinstance(selected_pred['result'], str) else selected_pred['result'],
                         'status': selected_pred['status'],
-                        'credits_spent': int(selected_pred['credits_spent'])
+                        'base_cost': int(selected_pred['base_cost']),
+                        'discount_percent': int(selected_pred['discount_percent']),
+                        'discount_amount': int(selected_pred['discount_amount']),
+                        'credits_spent': int(selected_pred['credits_spent']),
+                        'failure_reason': selected_pred.get('failure_reason')
                     })
         else:
             st.warning("Предсказания не найдены")
     
     with tab3:
+        st.header("Платежи")
+
+        payments_data = fetch_payments()
+        payments = payments_data.get("payments", [])
+        total = payments_data.get("total", 0)
+
+        if payments:
+            df_payments = pd.DataFrame(payments)
+            df_payments["created_at"] = pd.to_datetime(df_payments["created_at"])
+            if "confirmed_at" in df_payments:
+                df_payments["confirmed_at"] = pd.to_datetime(df_payments["confirmed_at"])
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Всего платежей", total)
+            with col2:
+                confirmed = len(df_payments[df_payments["status"] == "confirmed"])
+                st.metric("Подтвержденных", confirmed)
+            with col3:
+                paid_credits = df_payments[df_payments["status"] == "confirmed"]["amount"].sum()
+                st.metric("Начислено кредитов", paid_credits)
+
+            status_counts = df_payments["status"].value_counts()
+            fig_status = px.pie(
+                values=status_counts.values,
+                names=status_counts.index,
+                title="Статусы платежей"
+            )
+            st.plotly_chart(fig_status, use_container_width=True)
+
+            st.dataframe(
+                df_payments[["id", "user_id", "provider", "status", "amount", "external_id", "created_at", "confirmed_at"]],
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.warning("Платежи не найдены")
+
+    with tab4:
         st.header("Транзакции")
         
         # Фильтр по User ID
@@ -365,16 +432,19 @@ def main():
         else:
             st.warning("Транзакции не найдены")
     
-    with tab4:
+    with tab5:
         st.header("Общая статистика")
         
         users = fetch_users()
         predictions_data = fetch_predictions()
         predictions = predictions_data.get('predictions', [])
+        payments_data = fetch_payments()
+        payments = payments_data.get("payments", [])
         
         if users and predictions:
             df_users = pd.DataFrame(users)
             df_pred = pd.DataFrame(predictions)
+            df_payments = pd.DataFrame(payments) if payments else pd.DataFrame()
             
             if len(df_pred) > 0:
                 df_pred['created_at'] = pd.to_datetime(df_pred['created_at'])
@@ -391,6 +461,9 @@ def main():
                 with col4:
                     total_revenue = df_pred['credits_spent'].sum()
                     st.metric("Общий доход (кредиты)", total_revenue)
+                if len(df_payments) > 0:
+                    total_topups = df_payments[df_payments["status"] == "confirmed"]["amount"].sum()
+                    st.metric("Подтвержденные top-up", total_topups)
                 
                 # Топ пользователей по количеству предсказаний
                 st.subheader("Топ пользователей по активности")
@@ -422,6 +495,19 @@ def main():
                     labels={'hour': 'Час', 'count': 'Количество'}
                 )
                 st.plotly_chart(fig_hourly, use_container_width=True)
+
+                if "loyalty_tier" in df_users:
+                    st.subheader("Распределение loyalty tiers")
+                    tier_counts = df_users["loyalty_tier"].value_counts().reset_index()
+                    tier_counts.columns = ["tier", "count"]
+                    fig_tiers = px.bar(
+                        tier_counts,
+                        x="tier",
+                        y="count",
+                        title="Пользователи по loyalty tier",
+                        labels={"tier": "Tier", "count": "Пользователи"}
+                    )
+                    st.plotly_chart(fig_tiers, use_container_width=True)
             else:
                 st.info("Нет данных для статистики")
         else:

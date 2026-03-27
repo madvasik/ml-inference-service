@@ -1,13 +1,11 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15-alpine
     container_name: ml_service_postgres
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: ml_service
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-ml_service}
     ports:
       - "5432:5432"
     volumes:
@@ -39,23 +37,26 @@ services:
       dockerfile: docker/backend/Dockerfile
     container_name: ml_service_backend
     environment:
-      DATABASE_URL: postgresql://user:password@postgres:5432/ml_service
-      SECRET_KEY: your-secret-key-change-in-production
-      ALGORITHM: HS256
-      ACCESS_TOKEN_EXPIRE_MINUTES: 30
-      REFRESH_TOKEN_EXPIRE_DAYS: 7
-      PREDICTION_COST: 10
-      DEBUG: "True"
-      API_V1_PREFIX: /api/v1
-      ML_MODELS_DIR: ml_models
+      DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-ml_service}
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      PREDICTION_COST: ${PREDICTION_COST:-10}
+      DEBUG: ${DEBUG:-True}
+      API_V1_PREFIX: ${API_V1_PREFIX:-/api/v1}
+      ML_MODELS_DIR: ${ML_MODELS_DIR:-ml_models}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
-      RATE_LIMIT_PER_MINUTE: 1000
-      RATE_LIMIT_PER_USER_PER_MINUTE: 100
-      CORS_ORIGINS: "*"
-      MAX_UPLOAD_SIZE_MB: 100
-      LOG_JSON_FORMAT: "False"
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-1000}
+      RATE_LIMIT_PER_USER_PER_MINUTE: ${RATE_LIMIT_PER_USER_PER_MINUTE:-100}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-100}
+      LOG_JSON_FORMAT: ${LOG_JSON_FORMAT:-False}
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-admin@mlservice.com}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-admin123}
+      INITIAL_ADMIN_CREDITS: ${INITIAL_ADMIN_CREDITS:-10000}
     ports:
       - "8000:8000"
     volumes:
@@ -68,7 +69,7 @@ services:
     command: >
       sh -c "
         alembic upgrade head &&
-        uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+        uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
       "
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -86,26 +87,29 @@ services:
     ports:
       - "9091:9091"
     environment:
-      DATABASE_URL: postgresql://user:password@postgres:5432/ml_service
-      SECRET_KEY: your-secret-key-change-in-production
-      ALGORITHM: HS256
-      ACCESS_TOKEN_EXPIRE_MINUTES: 30
-      REFRESH_TOKEN_EXPIRE_DAYS: 7
-      PREDICTION_COST: 10
-      DEBUG: "True"
-      API_V1_PREFIX: /api/v1
-      ML_MODELS_DIR: ml_models
+      DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-ml_service}
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      PREDICTION_COST: ${PREDICTION_COST:-10}
+      DEBUG: ${DEBUG:-True}
+      API_V1_PREFIX: ${API_V1_PREFIX:-/api/v1}
+      ML_MODELS_DIR: ${ML_MODELS_DIR:-ml_models}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
-      RATE_LIMIT_PER_MINUTE: 1000
-      RATE_LIMIT_PER_USER_PER_MINUTE: 100
-      CORS_ORIGINS: "*"
-      MAX_UPLOAD_SIZE_MB: 100
-      LOG_JSON_FORMAT: "False"
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-1000}
+      RATE_LIMIT_PER_USER_PER_MINUTE: ${RATE_LIMIT_PER_USER_PER_MINUTE:-100}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-100}
+      LOG_JSON_FORMAT: ${LOG_JSON_FORMAT:-False}
       ENABLE_METRICS_SERVER: "true"
       METRICS_PORT: "9091"
       PROMETHEUS_MULTIPROC_DIR: "/tmp/prometheus_multiproc_dir"
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-admin@mlservice.com}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-admin123}
+      INITIAL_ADMIN_CREDITS: ${INITIAL_ADMIN_CREDITS:-10000}
     volumes:
       - ./ml_models:/app/ml_models
     depends_on:
@@ -114,7 +118,46 @@ services:
       redis:
         condition: service_healthy
       backend:
-        condition: service_started
+        condition: service_healthy
+    networks:
+      - ml_service_network
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: docker/celery/Dockerfile
+    container_name: ml_service_celery_beat
+    command: celery -A backend.app.tasks.celery_app beat --loglevel=info
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-ml_service}
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      PREDICTION_COST: ${PREDICTION_COST:-10}
+      DEBUG: ${DEBUG:-True}
+      API_V1_PREFIX: ${API_V1_PREFIX:-/api/v1}
+      ML_MODELS_DIR: ${ML_MODELS_DIR:-ml_models}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-1000}
+      RATE_LIMIT_PER_USER_PER_MINUTE: ${RATE_LIMIT_PER_USER_PER_MINUTE:-100}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-100}
+      LOG_JSON_FORMAT: ${LOG_JSON_FORMAT:-False}
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-admin@mlservice.com}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-admin123}
+      INITIAL_ADMIN_CREDITS: ${INITIAL_ADMIN_CREDITS:-10000}
+    volumes:
+      - ./ml_models:/app/ml_models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
     networks:
       - ml_service_network
 
@@ -170,9 +213,11 @@ services:
       - "8501:8501"
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
     environment:
       - BASE_URL=http://backend:8000
+      - INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL:-admin@mlservice.com}
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-admin123}
     networks:
       - ml_service_network
 

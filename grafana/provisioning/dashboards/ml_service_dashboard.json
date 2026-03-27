@@ -1,17 +1,70 @@
 {
   "dashboard": {
     "title": "ML Inference Service Dashboard",
-    "tags": ["ml", "inference", "monitoring"],
+    "tags": ["ml", "inference", "billing", "loyalty"],
     "timezone": "browser",
     "schemaVersion": 27,
-    "version": 1,
+    "version": 2,
     "refresh": "30s",
     "panels": [
       {
         "id": 1,
-        "title": "Prediction Requests Total",
+        "title": "Active Users (15m)",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+        "targets": [{"expr": "sum(active_users)", "refId": "A"}],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}
+        }
+      },
+      {
+        "id": 2,
+        "title": "Confirmed Payments",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+        "targets": [{"expr": "sum(payment_intents_total{status=\"confirmed\"})", "refId": "A"}],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}
+        }
+      },
+      {
+        "id": 3,
+        "title": "Discounted Credits Granted",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0},
+        "targets": [{"expr": "sum(prediction_discount_credits_total)", "refId": "A"}],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}
+        }
+      },
+      {
+        "id": 4,
+        "title": "Prediction Success Rate",
+        "type": "stat",
+        "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0},
+        "targets": [
+          {
+            "expr": "100 * sum(prediction_requests_total{status=\"completed\"}) / clamp_min(sum(prediction_requests_total{status=~\"completed|failed|error\"}), 1)",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}
+        }
+      },
+      {
+        "id": 5,
+        "title": "Prediction Throughput by Status",
         "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
         "targets": [
           {
             "expr": "sum(rate(prediction_requests_total[5m])) by (status)",
@@ -19,43 +72,27 @@
             "refId": "A"
           }
         ],
-        "yaxes": [
-          {"format": "reqps", "label": "Requests/sec"},
-          {"format": "short"}
-        ]
+        "yaxes": [{"format": "reqps", "label": "Requests/sec"}, {"format": "short"}]
       },
       {
-        "id": 2,
-        "title": "Prediction Latency (p50, p95, p99)",
+        "id": 6,
+        "title": "Prediction Latency (p95)",
         "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
         "targets": [
-          {
-            "expr": "histogram_quantile(0.50, sum(rate(prediction_latency_seconds_bucket[5m])) by (le))",
-            "legendFormat": "p50",
-            "refId": "A"
-          },
           {
             "expr": "histogram_quantile(0.95, sum(rate(prediction_latency_seconds_bucket[5m])) by (le))",
             "legendFormat": "p95",
-            "refId": "B"
-          },
-          {
-            "expr": "histogram_quantile(0.99, sum(rate(prediction_latency_seconds_bucket[5m])) by (le))",
-            "legendFormat": "p99",
-            "refId": "C"
+            "refId": "A"
           }
         ],
-        "yaxes": [
-          {"format": "s", "label": "Latency"},
-          {"format": "short"}
-        ]
+        "yaxes": [{"format": "s", "label": "Latency"}, {"format": "short"}]
       },
       {
-        "id": 3,
-        "title": "Billing Transactions Total",
+        "id": 7,
+        "title": "Billing Transactions by Type",
         "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
         "targets": [
           {
             "expr": "sum(rate(billing_transactions_total[5m])) by (type)",
@@ -63,59 +100,30 @@
             "refId": "A"
           }
         ],
-        "yaxes": [
-          {"format": "short", "label": "Transactions/sec"},
-          {"format": "short"}
-        ]
+        "yaxes": [{"format": "short", "label": "Transactions/sec"}, {"format": "short"}]
       },
       {
-        "id": 4,
-        "title": "Active Users",
-        "type": "stat",
-        "gridPos": {"h": 8, "w": 6, "x": 12, "y": 8},
-        "targets": [
-          {
-            "expr": "sum(active_users)",
-            "refId": "A"
-          }
-        ],
-        "options": {
-          "colorMode": "value",
-          "graphMode": "area",
-          "justifyMode": "auto",
-          "orientation": "auto",
-          "reduceOptions": {
-            "values": false,
-            "calcs": ["lastNotNull"],
-            "fields": ""
-          }
-        }
-      },
-      {
-        "id": 5,
-        "title": "Prediction Errors",
+        "id": 8,
+        "title": "Payment Intents by Status",
         "type": "graph",
-        "gridPos": {"h": 8, "w": 6, "x": 18, "y": 8},
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
         "targets": [
           {
-            "expr": "sum(rate(prediction_errors_total[5m])) by (error_type)",
-            "legendFormat": "{{error_type}}",
+            "expr": "sum(rate(payment_intents_total[5m])) by (status)",
+            "legendFormat": "{{status}}",
             "refId": "A"
           }
         ],
-        "yaxes": [
-          {"format": "short", "label": "Errors/sec"},
-          {"format": "short"}
-        ]
+        "yaxes": [{"format": "short", "label": "Payments/sec"}, {"format": "short"}]
       },
       {
-        "id": 6,
-        "title": "Top Models by Usage",
+        "id": 9,
+        "title": "Loyalty Tier Distribution",
         "type": "table",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
         "targets": [
           {
-            "expr": "sum(prediction_requests_total) by (model_id)",
+            "expr": "sum(loyalty_users_total) by (tier)",
             "format": "table",
             "instant": true,
             "refId": "A"
@@ -125,46 +133,30 @@
           {
             "id": "organize",
             "options": {
-              "excludeByName": {
-                "Time": true
-              },
-              "indexByName": {},
-              "renameByName": {
-                "model_id": "Model ID",
-                "Value": "Total Requests"
-              }
+              "excludeByName": {"Time": true},
+              "renameByName": {"tier": "Tier", "Value": "Users"}
             }
           }
         ]
       },
       {
-        "id": 7,
-        "title": "Prediction Success Rate",
+        "id": 10,
+        "title": "Prediction Errors by Type",
         "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
         "targets": [
           {
-            "expr": "sum(prediction_requests_total{status=\"completed\"}) / (sum(prediction_requests_total{status=\"completed\"}) + sum(prediction_requests_total{status=\"failed\"})) * 100",
-            "legendFormat": "Success Rate",
+            "expr": "sum(rate(prediction_errors_total[5m])) by (error_type)",
+            "legendFormat": "{{error_type}}",
             "refId": "A"
           }
         ],
-        "yaxes": [
-          {"format": "percent", "label": "Success Rate %", "max": 100, "min": 0},
-          {"format": "short"}
-        ]
+        "yaxes": [{"format": "short", "label": "Errors/sec"}, {"format": "short"}]
       }
     ],
-    "time": {
-      "from": "now-1h",
-      "to": "now"
-    },
+    "time": {"from": "now-1h", "to": "now"},
     "timepicker": {},
-    "templating": {
-      "list": []
-    },
-    "annotations": {
-      "list": []
-    }
+    "templating": {"list": []},
+    "annotations": {"list": []}
   }
 }
