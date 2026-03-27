@@ -1,6 +1,6 @@
 import pytest
-from backend.app.db.base import Base
-from backend.app.db import session as session_module
+from backend.app.db import Base
+import backend.app.db as session_module
 
 
 def test_get_db_yields_session():

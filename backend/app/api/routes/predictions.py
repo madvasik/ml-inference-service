@@ -1,16 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 
-from backend.app.api.deps import get_current_user
-from backend.app.billing.service import build_prediction_cost_snapshot, get_balance
-from backend.app.db.session import get_db
-from backend.app.domain.models.user import User
-from backend.app.domain.models.ml_model import MLModel
-from backend.app.domain.models.prediction import Prediction, PredictionStatus
-from backend.app.services.loyalty_service import get_loyalty_snapshot
-from backend.app.domain.schemas.prediction import PredictionCreate, PredictionResponse, PredictionList, PredictionTaskResponse
-from backend.app.workers.prediction_tasks import execute_prediction
-from backend.app.core.config import settings
+from backend.app.billing import build_prediction_cost_snapshot, get_balance
+from backend.app.config import settings
+from backend.app.db import get_db
+from backend.app.loyalty import get_loyalty_snapshot
+from backend.app.models import MLModel, Prediction, PredictionStatus, User
+from backend.app.schemas.prediction import PredictionCreate, PredictionList, PredictionResponse, PredictionTaskResponse
+from backend.app.security import get_current_user
+from backend.app.worker import execute_prediction
 
 router = APIRouter()
 

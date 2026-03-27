@@ -1,4 +1,4 @@
-from backend.app.core.config import Settings, settings
+from backend.app.config import Settings, settings
 from backend.app.core.exceptions import (
     InsufficientCreditsError,
     InvalidModelError,

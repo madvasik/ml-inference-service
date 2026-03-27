@@ -53,7 +53,7 @@ def test_prediction_error_exception_handler():
 
 def test_general_exception_handler_debug_mode(client_no_db, monkeypatch):
     """Тест общего обработчика исключений в debug режиме"""
-    from backend.app.core.config import settings
+    from backend.app.config import settings
     
     original_debug = settings.debug
     monkeypatch.setattr(settings, "debug", True)
@@ -67,7 +67,7 @@ def test_general_exception_handler_debug_mode(client_no_db, monkeypatch):
 
 def test_general_exception_handler_production_mode(client_no_db, monkeypatch):
     """Тест общего обработчика исключений в production режиме"""
-    from backend.app.core.config import settings
+    from backend.app.config import settings
     
     original_debug = settings.debug
     monkeypatch.setattr(settings, "debug", False)

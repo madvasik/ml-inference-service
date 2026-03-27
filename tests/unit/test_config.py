@@ -1,6 +1,6 @@
 import pytest
 
-from backend.app.core.config import Settings
+from backend.app.config import Settings
 
 
 @pytest.mark.parametrize(

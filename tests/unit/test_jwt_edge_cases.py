@@ -1,7 +1,8 @@
 import pytest
 from datetime import timedelta
-from backend.app.auth.jwt import create_access_token, create_refresh_token, decode_token
-from backend.app.core.config import settings
+
+from backend.app.config import settings
+from backend.app.security import create_access_token, create_refresh_token, decode_token
 
 
 def test_create_access_token_with_custom_expires_delta():

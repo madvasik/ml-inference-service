@@ -1,11 +1,11 @@
-from backend.app.api.routes import admin, auth, billing, metrics, models, predictions, users
+from backend.app.api.routes import admin, auth, billing, models, predictions, system, users
 
 __all__ = [
     "admin",
     "auth",
     "billing",
-    "metrics",
     "models",
     "predictions",
+    "system",
     "users",
 ]

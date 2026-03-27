@@ -1,7 +1,8 @@
-import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from backend.app.main import app
-import time
+
+from backend.app.config import settings
+from backend.app.middleware import RateLimitMiddleware
 
 # Используем фикстуру client из conftest.py, которая правильно настраивает БД
 # Не нужно определять свой client здесь
@@ -48,9 +49,25 @@ def test_rate_limit_excludes_docs_endpoint(client):
     assert response.status_code == 200
 
 
-@pytest.mark.skip(reason="Requires actual rate limiting implementation with proper storage")
-def test_rate_limit_blocks_excessive_requests(client):
+def test_rate_limit_blocks_excessive_requests(monkeypatch):
     """Тест блокировки при превышении лимита"""
-    # Этот тест требует реальной реализации rate limiting
-    # с правильным хранилищем состояний между запросами
-    pass
+    limited_app = FastAPI()
+    limited_app.add_middleware(RateLimitMiddleware)
+
+    @limited_app.get("/limited")
+    def limited():
+        return {"ok": True}
+
+    original_limit = settings.rate_limit_per_minute
+    monkeypatch.setattr(settings, "rate_limit_per_minute", 2)
+
+    try:
+        with TestClient(limited_app) as local_client:
+            assert local_client.get("/limited").status_code == 200
+            assert local_client.get("/limited").status_code == 200
+
+            blocked_response = local_client.get("/limited")
+            assert blocked_response.status_code == 429
+            assert blocked_response.json()["detail"] == "Rate limit exceeded. Please try again later."
+    finally:
+        monkeypatch.setattr(settings, "rate_limit_per_minute", original_limit)

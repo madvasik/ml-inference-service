@@ -1,8 +1,7 @@
 from datetime import datetime, timezone
 
-from backend.app.domain.models.prediction import Prediction, PredictionStatus
-from backend.app.domain.models.user import LoyaltyTier
-from backend.app.services.loyalty_service import ensure_default_loyalty_rules, recalculate_loyalty_tiers
+from backend.app.loyalty import ensure_default_loyalty_rules, recalculate_loyalty_tiers
+from backend.app.models import LoyaltyTier, Prediction, PredictionStatus
 
 
 def test_ensure_default_loyalty_rules_creates_seed_data(db_session):

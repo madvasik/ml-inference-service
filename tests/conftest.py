@@ -8,17 +8,13 @@ from sqlalchemy.orm import sessionmaker
 from sklearn.ensemble import RandomForestClassifier
 import numpy as np
 
-from backend.app.db.base import Base
-from backend.app.db.session import get_db
+from backend.app.db import Base, get_db
 from backend.app.main import app
 from backend.app import main as main_module
-from backend.app.db import session as db_session_module
-from backend.app.workers import loyalty_tasks as loyalty_tasks_module
-from backend.app.workers import prediction_tasks as prediction_tasks_module
-from backend.app.domain.models.user import User, UserRole
-from backend.app.domain.models.balance import Balance
-from backend.app.domain.models.ml_model import MLModel
-from backend.app.auth.security import get_password_hash
+import backend.app.db as db_module
+import backend.app.worker as worker_module
+from backend.app.models import Balance, MLModel, User, UserRole
+from backend.app.security import get_password_hash
 
 @pytest.fixture(scope="function")
 def testing_session_factory(tmp_path):
@@ -41,9 +37,8 @@ def testing_session_factory(tmp_path):
 def override_session_locals(monkeypatch, testing_session_factory):
     """Подменяет SessionLocal во всех runtime-модулях на временную SQLite-сессию."""
     monkeypatch.setattr(main_module, "SessionLocal", testing_session_factory)
-    monkeypatch.setattr(db_session_module, "SessionLocal", testing_session_factory)
-    monkeypatch.setattr(prediction_tasks_module, "SessionLocal", testing_session_factory)
-    monkeypatch.setattr(loyalty_tasks_module, "SessionLocal", testing_session_factory)
+    monkeypatch.setattr(db_module, "SessionLocal", testing_session_factory)
+    monkeypatch.setattr(worker_module, "SessionLocal", testing_session_factory)
     yield
 
 

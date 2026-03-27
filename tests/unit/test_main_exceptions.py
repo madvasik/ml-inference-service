@@ -68,12 +68,12 @@ def test_health_endpoint(client_no_db):
 
 def test_health_endpoint_returns_503_when_database_is_unavailable(client_no_db, monkeypatch):
     """Тест health endpoint при недоступной БД."""
-    from backend.app import main as main_module
+    from backend.app.api.routes import system as system_module
 
     def broken_session_local():
         raise RuntimeError("db is down")
 
-    monkeypatch.setattr(main_module, "SessionLocal", broken_session_local)
+    monkeypatch.setattr(system_module, "SessionLocal", broken_session_local)
 
     response = client_no_db.get("/health")
 
@@ -86,12 +86,12 @@ def test_health_endpoint_returns_503_when_database_is_unavailable(client_no_db, 
 
 def test_health_endpoint_returns_503_when_schema_is_missing(client_no_db, monkeypatch):
     """Тест health endpoint при доступной БД, но неинициализированной схеме."""
-    from backend.app import main as main_module
+    from backend.app.api.routes import system as system_module
 
     def fake_schema_status(_db):
         return False, "missing_tables", ["users", "payments"]
 
-    monkeypatch.setattr(main_module, "database_schema_status", fake_schema_status)
+    monkeypatch.setattr(system_module, "database_schema_status", fake_schema_status)
 
     response = client_no_db.get("/health")
 

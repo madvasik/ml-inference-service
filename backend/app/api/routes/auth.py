@@ -1,12 +1,16 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from backend.app.db.session import get_db
-from backend.app.domain.models.user import LoyaltyTier, User, UserRole
-from backend.app.domain.models.balance import Balance
-from backend.app.auth.security import verify_password, get_password_hash
-from backend.app.auth.jwt import create_access_token, create_refresh_token, decode_token
-from backend.app.domain.schemas.auth import UserRegister, UserLogin, Token, RefreshTokenRequest
+from backend.app.db import get_db
+from backend.app.models import Balance, LoyaltyTier, User, UserRole
+from backend.app.schemas.auth import RefreshTokenRequest, Token, UserLogin, UserRegister
+from backend.app.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    get_password_hash,
+    verify_password,
+)
 
 router = APIRouter()
 

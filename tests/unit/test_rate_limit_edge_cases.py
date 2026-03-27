@@ -1,7 +1,7 @@
-import pytest
-from fastapi.testclient import TestClient
-from backend.app.main import app
 import time
+
+from backend.app.middleware import RateLimitMiddleware
+from backend.app.security import create_access_token
 
 # Используем фикстуру client из conftest.py, которая правильно настраивает БД
 # Не нужно определять свой client здесь
@@ -20,29 +20,26 @@ def test_rate_limit_exception_handling(client):
 
 def test_rate_limit_cleanup_mechanism():
     """Тест механизма очистки старых записей rate limit"""
-    from backend.app.observability.middleware.rate_limit import RateLimitMiddleware
     from unittest.mock import Mock
-    
+
     middleware = RateLimitMiddleware(Mock())
-    
+
     # Добавляем старые записи
     old_time = time.time() - 200  # 200 секунд назад
     middleware._requests["test_key"] = [old_time]
-    
+
     # Вызываем cleanup
     middleware._last_cleanup = time.time() - 400  # Давно не чистили
     middleware._cleanup_old_entries()
-    
+
     # Старые записи должны быть удалены
     assert "test_key" not in middleware._requests or len(middleware._requests.get("test_key", [])) == 0
 
 
 def test_rate_limit_user_key_extraction(client, test_user):
     """Тест извлечения user_id из токена для rate limiting"""
-    from backend.app.auth.jwt import create_access_token
-    
     token = create_access_token({"sub": str(test_user.id), "type": "access"})
-    
+
     # Делаем запрос с токеном
     response = client.get(
         "/api/v1/users/me",
@@ -66,11 +63,10 @@ def test_rate_limit_ip_fallback(client):
 
 def test_rate_limit_blocked_response(client):
     """Тест ответа при блокировке запроса"""
-    from backend.app.observability.middleware.rate_limit import RateLimitMiddleware
-    from unittest.mock import Mock, AsyncMock
-    
+    from unittest.mock import Mock
+
     middleware = RateLimitMiddleware(Mock())
-    
+
     # Заполняем requests до лимита
     key = "test_key"
     limit = 10

@@ -1,9 +1,8 @@
-import pytest
-from unittest.mock import Mock, patch
-from fastapi import Request
-from fastapi.testclient import TestClient
-from backend.app.main import app
-from backend.app.observability.metrics import prediction_requests_total, prediction_latency_seconds
+from unittest.mock import AsyncMock, Mock, patch
+
+from backend.app.metrics import prediction_latency_seconds, prediction_requests_total
+from backend.app.middleware import MetricsMiddleware
+from backend.app.security import create_access_token
 
 # Используем фикстуру client из conftest.py, которая правильно настраивает БД
 # Не нужно определять свой client здесь
@@ -23,10 +22,8 @@ def test_metrics_middleware_skips_health_endpoint(client):
 
 def test_metrics_middleware_tracks_prediction_request(client, test_user, test_ml_model):
     """Тест отслеживания метрик для запроса предсказания"""
-    from backend.app.auth.jwt import create_access_token
-    
     token = create_access_token({"sub": str(test_user.id), "type": "access"})
-    
+
     # Получаем начальное значение метрики
     samples_before = prediction_requests_total.collect()[0].samples
     initial_count = sum(
@@ -63,10 +60,8 @@ def test_metrics_middleware_tracks_prediction_request(client, test_user, test_ml
 
 def test_metrics_middleware_tracks_prediction_latency(client, test_user, test_ml_model):
     """Тест отслеживания латентности для запроса предсказания"""
-    from backend.app.auth.jwt import create_access_token
-    
     token = create_access_token({"sub": str(test_user.id), "type": "access"})
-    
+
     # Получаем начальное количество samples
     samples_before = prediction_latency_seconds.collect()[0].samples
     initial_count = len(samples_before)
@@ -95,10 +90,8 @@ def test_metrics_middleware_tracks_prediction_latency(client, test_user, test_ml
 
 def test_metrics_middleware_handles_exception(client, test_user, test_ml_model):
     """Тест обработки исключений в middleware"""
-    from backend.app.auth.jwt import create_access_token
-    
     token = create_access_token({"sub": str(test_user.id), "type": "access"})
-    
+
     # Мокируем Celery чтобы вызвать ошибку
     with patch('backend.app.api.routes.predictions.execute_prediction.delay') as mock_celery:
         mock_celery.side_effect = Exception("Test error")
@@ -138,11 +131,8 @@ def test_metrics_middleware_handles_exception(client, test_user, test_ml_model):
 
 def test_metrics_middleware_uses_model_id_from_state():
     """Тест использования model_id из request.state"""
-    from backend.app.observability.middleware.metrics_middleware import MetricsMiddleware
-    from unittest.mock import AsyncMock, Mock
-    
     middleware = MetricsMiddleware(Mock())
-    
+
     # Создаем мок request с model_id в state
     request = Mock()
     request.url.path = "/api/v1/predictions"

@@ -1,7 +1,7 @@
 from unittest.mock import Mock, patch
 
-from backend.app.domain.models.prediction import Prediction, PredictionStatus
-from backend.app.workers.prediction_tasks import execute_prediction
+from backend.app.models import Prediction, PredictionStatus
+from backend.app.worker import execute_prediction
 
 
 def _create_prediction(db_session, test_user, test_ml_model, credits_spent: int = 10) -> Prediction:
@@ -21,9 +21,9 @@ def _create_prediction(db_session, test_user, test_ml_model, credits_spent: int 
     return prediction
 
 
-@patch("backend.app.workers.prediction_tasks.load_model")
-@patch("backend.app.workers.prediction_tasks.predict")
-@patch("backend.app.workers.prediction_tasks.charge_prediction")
+@patch("backend.app.worker.load_model")
+@patch("backend.app.worker.predict")
+@patch("backend.app.worker.charge_prediction")
 def test_execute_prediction_success(mock_charge_prediction, mock_predict, mock_load_model, db_session, test_user, test_ml_model):
     prediction = _create_prediction(db_session, test_user, test_ml_model)
     mock_load_model.return_value = Mock()
@@ -55,9 +55,9 @@ def test_execute_prediction_model_not_found(db_session, test_user, test_ml_model
     assert prediction.failure_reason == "model_not_found"
 
 
-@patch("backend.app.workers.prediction_tasks.load_model")
-@patch("backend.app.workers.prediction_tasks.predict")
-@patch("backend.app.workers.prediction_tasks.charge_prediction")
+@patch("backend.app.worker.load_model")
+@patch("backend.app.worker.predict")
+@patch("backend.app.worker.charge_prediction")
 def test_execute_prediction_insufficient_credits(mock_charge_prediction, mock_predict, mock_load_model, db_session, test_user, test_ml_model):
     prediction = _create_prediction(db_session, test_user, test_ml_model)
     mock_load_model.return_value = Mock()

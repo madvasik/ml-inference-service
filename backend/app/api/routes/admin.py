@@ -2,15 +2,12 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from typing import Optional
-from backend.app.api.deps import get_current_admin
-from backend.app.db.session import get_db
-from backend.app.domain.models.payment import Payment
-from backend.app.domain.models.user import User
-from backend.app.domain.models.prediction import Prediction
-from backend.app.domain.models.transaction import Transaction
-from backend.app.domain.schemas.user import UserResponse
-from backend.app.domain.schemas.billing import PaymentList, TransactionList
-from backend.app.domain.schemas.prediction import PredictionResponse, PredictionList
+from backend.app.security import get_current_admin
+from backend.app.db import get_db
+from backend.app.models import Payment, Prediction, Transaction, User
+from backend.app.schemas.billing import PaymentList, TransactionList
+from backend.app.schemas.prediction import PredictionList, PredictionResponse
+from backend.app.schemas.user import UserResponse
 
 router = APIRouter()
 

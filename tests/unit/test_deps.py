@@ -2,15 +2,14 @@ import pytest
 import pytest_asyncio
 from fastapi import HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
-from backend.app.api.deps import get_current_user, get_current_admin
-from backend.app.domain.models.user import User, UserRole
-from backend.app.auth.jwt import create_access_token, create_refresh_token
+from backend.app.models import User, UserRole
+from backend.app.security import create_access_token, create_refresh_token, get_current_admin, get_current_user
 
 
 @pytest.mark.asyncio
 async def test_get_current_user_invalid_token(db_session):
     """Тест получения пользователя с невалидным токеном"""
-    from backend.app.api.deps import security
+    from backend.app.security import security
     
     # Создаем мок credentials с невалидным токеном
     credentials = HTTPAuthorizationCredentials(
@@ -102,7 +101,7 @@ async def test_get_current_user_not_found(db_session):
 @pytest.mark.asyncio
 async def test_get_current_admin_success(db_session, test_user):
     """Тест получения администратора"""
-    from backend.app.auth.security import get_password_hash
+    from backend.app.security import get_password_hash
     # Создаем администратора
     admin = User(
         email="admin_test@example.com",

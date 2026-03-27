@@ -6,7 +6,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LinearRegression
 from sklearn.cluster import KMeans
 import numpy as np
-from backend.app.services.model_loader import (
+from backend.app.ml import (
     validate_model_file,
     load_model,
     save_model,

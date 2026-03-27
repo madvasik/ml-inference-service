@@ -8,9 +8,11 @@ import sys
 # Добавляем путь к корню репозитория
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from backend.app.core.config import settings
-from backend.app.db.base import Base
-from backend.app.domain import models  # noqa: F401
+from backend.app.config import settings
+from backend.app.db import Base
+import backend.app.models.billing  # noqa: F401
+import backend.app.models.ml  # noqa: F401
+import backend.app.models.user  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

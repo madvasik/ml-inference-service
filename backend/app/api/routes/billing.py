@@ -1,18 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from backend.app.api.deps import get_current_user
-from backend.app.db.session import get_db
-from backend.app.domain.models.user import User
-from backend.app.billing.service import get_balance
-from backend.app.services.payment_service import create_payment as create_payment_record, list_user_payments
-from backend.app.domain.models.transaction import Transaction
-from backend.app.domain.schemas.billing import (
+from backend.app.billing import create_payment, get_balance, list_user_payments
+from backend.app.db import get_db
+from backend.app.models import Transaction, User
+from backend.app.schemas.billing import (
     BalanceResponse,
     PaymentCreate,
     PaymentCreateResponse,
     PaymentList,
     TransactionList,
 )
+from backend.app.security import get_current_user
 
 router = APIRouter()
 
@@ -39,7 +37,7 @@ def create_user_payment(
             detail="Amount must be positive"
         )
 
-    payment_result = create_payment_record(db, current_user.id, payment_data.amount)
+    payment_result = create_payment(db, current_user.id, payment_data.amount)
     return PaymentCreateResponse(
         payment=payment_result.payment,
         credits=payment_result.credits,

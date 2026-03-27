@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 from unittest.mock import Mock, patch
 from sklearn.ensemble import RandomForestClassifier
-from backend.app.services.ml_service import predict, prepare_features
+from backend.app.ml import predict, prepare_features
 
 
 def test_prepare_features_with_feature_names():

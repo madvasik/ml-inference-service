@@ -1,7 +1,6 @@
 import pytest
-from backend.app.billing.service import get_balance, deduct_credits, add_credits
-from backend.app.domain.models.balance import Balance
-from backend.app.domain.models.transaction import Transaction, TransactionType
+from backend.app.billing import add_credits, deduct_credits, get_balance
+from backend.app.models import Balance, Transaction, TransactionType
 
 
 def test_get_balance_existing(db_session, test_user):

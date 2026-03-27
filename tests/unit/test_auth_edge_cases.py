@@ -1,6 +1,6 @@
 import pytest
 from fastapi import status
-from backend.app.auth.jwt import create_refresh_token, decode_token
+from backend.app.security import create_access_token, create_refresh_token, decode_token
 
 
 def test_refresh_token_invalid_token(client):
@@ -15,8 +15,6 @@ def test_refresh_token_invalid_token(client):
 
 def test_refresh_token_wrong_type(client, test_user):
     """Тест обновления токена с access token вместо refresh token"""
-    from backend.app.auth.jwt import create_access_token
-    
     # Создаем access token вместо refresh
     access_token = create_access_token({"sub": str(test_user.id), "email": test_user.email})
     
@@ -32,8 +30,6 @@ def test_refresh_token_no_sub(client):
     """Тест обновления токена без sub в payload"""
     # Создаем токен без sub (это сложно сделать напрямую, но можно проверить обработку)
     # В реальности это будет обработано в decode_token, но проверим обработку в refresh endpoint
-    from backend.app.auth.jwt import create_refresh_token
-    
     # Создаем токен с пустым sub
     token = create_refresh_token({"email": "test@example.com"})  # Без sub
     

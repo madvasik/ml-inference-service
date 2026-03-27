@@ -22,4 +22,4 @@ ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
 # Команда запуска Celery worker (с поддержкой метрик если нужно)
-CMD ["python", "-m", "backend.app.workers.start_celery_with_metrics"]
+CMD ["python", "-m", "backend.app.worker"]

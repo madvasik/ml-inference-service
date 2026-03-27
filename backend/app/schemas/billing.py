@@ -1,0 +1,56 @@
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
+
+from backend.app.models import PaymentStatus, TransactionType
+
+
+class BalanceResponse(BaseModel):
+    credits: int
+
+
+class TransactionResponse(BaseModel):
+    id: int
+    user_id: int
+    amount: int
+    type: TransactionType
+    prediction_id: int | None
+    payment_id: int | None
+    description: str | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TransactionList(BaseModel):
+    transactions: list[TransactionResponse]
+    total: int
+
+
+class PaymentCreate(BaseModel):
+    amount: int
+
+
+class PaymentResponse(BaseModel):
+    id: int
+    user_id: int
+    amount: int
+    provider: str
+    status: PaymentStatus
+    external_id: str | None
+    confirmed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PaymentCreateResponse(BaseModel):
+    payment: PaymentResponse
+    credits: int
+    message: str
+
+
+class PaymentList(BaseModel):
+    payments: list[PaymentResponse]
+    total: int

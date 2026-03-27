@@ -1,14 +1,12 @@
 import pytest
 from fastapi import status
-from backend.app.domain.models.user import User, UserRole
-from backend.app.domain.models.prediction import Prediction, PredictionStatus
-from backend.app.domain.models.ml_model import MLModel
+from backend.app.models import MLModel, Prediction, PredictionStatus, User, UserRole
 
 
 @pytest.fixture
 def admin_user(db_session, test_user):
     """Создание администратора"""
-    from backend.app.auth.security import get_password_hash
+    from backend.app.security import get_password_hash
     admin = User(
         email="admin@example.com",
         password_hash=get_password_hash("adminpassword"),
@@ -23,7 +21,7 @@ def admin_user(db_session, test_user):
 @pytest.fixture
 def another_user(db_session):
     """Создание другого пользователя"""
-    from backend.app.auth.security import get_password_hash
+    from backend.app.security import get_password_hash
     user = User(
         email="another@example.com",
         password_hash=get_password_hash("anotherpassword"),
@@ -37,7 +35,7 @@ def another_user(db_session):
 
 def test_list_all_users_as_admin(client, admin_user, test_user, another_user):
     """Тест получения списка всех пользователей администратором"""
-    from backend.app.auth.jwt import create_access_token
+    from backend.app.security import create_access_token
     
     # Создаем токен напрямую для теста (более надежно чем логин)
     token = create_access_token({"sub": str(admin_user.id), "type": "access"})
@@ -53,7 +51,7 @@ def test_list_all_users_as_admin(client, admin_user, test_user, another_user):
 
 def test_list_all_users_pagination(client, admin_user, db_session):
     """Тест пагинации списка пользователей"""
-    from backend.app.auth.security import get_password_hash
+    from backend.app.security import get_password_hash
     # Создаем несколько пользователей
     for i in range(5):
         user = User(
@@ -64,7 +62,7 @@ def test_list_all_users_pagination(client, admin_user, db_session):
         db_session.add(user)
     db_session.commit()
     
-    from backend.app.auth.jwt import create_access_token
+    from backend.app.security import create_access_token
     token = create_access_token({"sub": str(admin_user.id)})
     
     response = client.get(
@@ -78,7 +76,7 @@ def test_list_all_users_pagination(client, admin_user, db_session):
 
 def test_get_user_by_id(client, admin_user, test_user):
     """Тест получения пользователя по ID"""
-    from backend.app.auth.jwt import create_access_token
+    from backend.app.security import create_access_token
     token = create_access_token({"sub": str(admin_user.id)})
     
     response = client.get(
@@ -93,7 +91,7 @@ def test_get_user_by_id(client, admin_user, test_user):
 
 def test_get_user_not_found(client, admin_user):
     """Тест получения несуществующего пользователя"""
-    from backend.app.auth.jwt import create_access_token
+    from backend.app.security import create_access_token
     token = create_access_token({"sub": str(admin_user.id)})
     
     response = client.get(
@@ -117,7 +115,7 @@ def test_list_all_predictions(client, admin_user, test_user, test_ml_model, db_s
         db_session.add(prediction)
     db_session.commit()
     
-    from backend.app.auth.jwt import create_access_token
+    from backend.app.security import create_access_token
     token = create_access_token({"sub": str(admin_user.id)})
     
     response = client.get(
@@ -150,7 +148,7 @@ def test_list_predictions_filtered_by_user_id(client, admin_user, test_user, ano
     db_session.add_all([prediction1, prediction2])
     db_session.commit()
     
-    from backend.app.auth.jwt import create_access_token
+    from backend.app.security import create_access_token
     token = create_access_token({"sub": str(admin_user.id)})
     
     response = client.get(
@@ -165,7 +163,7 @@ def test_list_predictions_filtered_by_user_id(client, admin_user, test_user, ano
 def test_list_predictions_filtered_by_model_id(client, admin_user, test_user, test_ml_model, db_session):
     """Тест фильтрации предсказаний по model_id"""
     # Создаем другую модель
-    from backend.app.domain.models.ml_model import MLModel
+    from backend.app.models import MLModel
     model2 = MLModel(
         owner_id=test_user.id,
         model_name="model2",
@@ -193,7 +191,7 @@ def test_list_predictions_filtered_by_model_id(client, admin_user, test_user, te
     db_session.add_all([prediction1, prediction2])
     db_session.commit()
     
-    from backend.app.auth.jwt import create_access_token
+    from backend.app.security import create_access_token
     token = create_access_token({"sub": str(admin_user.id)})
     
     response = client.get(
@@ -217,7 +215,7 @@ def test_get_prediction_by_id(client, admin_user, test_user, test_ml_model, db_s
     db_session.add(prediction)
     db_session.commit()
     
-    from backend.app.auth.jwt import create_access_token
+    from backend.app.security import create_access_token
     token = create_access_token({"sub": str(admin_user.id)})
     
     response = client.get(
@@ -231,7 +229,7 @@ def test_get_prediction_by_id(client, admin_user, test_user, test_ml_model, db_s
 
 def test_get_prediction_not_found(client, admin_user):
     """Тест получения несуществующего предсказания"""
-    from backend.app.auth.jwt import create_access_token
+    from backend.app.security import create_access_token
     token = create_access_token({"sub": str(admin_user.id)})
     
     response = client.get(
@@ -243,7 +241,7 @@ def test_get_prediction_not_found(client, admin_user):
 
 def test_admin_endpoints_require_admin(client, test_user):
     """Тест, что админские endpoints требуют прав администратора"""
-    from backend.app.auth.jwt import create_access_token
+    from backend.app.security import create_access_token
     token = create_access_token({"sub": str(test_user.id)})  # Обычный пользователь
     
     response = client.get(

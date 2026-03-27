@@ -96,7 +96,7 @@ def _init_schema(env: dict[str, str]) -> None:
         [
             sys.executable,
             "-c",
-            "from backend.app.db.base import Base; from backend.app.db.session import engine; Base.metadata.create_all(bind=engine)",
+            "from backend.app.db import Base, engine; Base.metadata.create_all(bind=engine)",
         ],
         cwd=PROJECT_ROOT,
         env=env,

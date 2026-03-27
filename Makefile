@@ -22,7 +22,9 @@ e2e:
 	BASE_URL=$${BASE_URL:-http://localhost:8000} \
 	PROMETHEUS_URL=$${PROMETHEUS_URL:-http://localhost:9090} \
 	GRAFANA_URL=$${GRAFANA_URL:-http://localhost:3000} \
-	bash tools/e2e/run_all_e2e_tests.sh
+	GRAFANA_USER=$${GRAFANA_USER:-admin} \
+	GRAFANA_PASSWORD=$${GRAFANA_PASSWORD:-admin} \
+	$(PYTEST) tests/e2e -m e2e -o addopts='-v --strict-markers'
 
 clean:
 	rm -rf var/smoke_models var/reports

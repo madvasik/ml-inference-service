@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
-from backend.app.api.deps import get_current_user
-from backend.app.domain.models.user import User
-from backend.app.domain.schemas.user import UserResponse
+from backend.app.models import User
+from backend.app.schemas.user import UserResponse
+from backend.app.security import get_current_user
 
 router = APIRouter()
 

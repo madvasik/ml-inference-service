@@ -4,17 +4,16 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from backend.app.api.deps import get_current_user
-from backend.app.db.session import get_db
-from backend.app.domain.models.user import User
-from backend.app.domain.models.ml_model import MLModel
-from backend.app.services.model_loader import (
+from backend.app.config import settings
+from backend.app.db import get_db
+from backend.app.ml import (
     get_model_type,
     load_model,
     validate_model_file,
 )
-from backend.app.domain.schemas.model import MLModelResponse, MLModelList
-from backend.app.core.config import settings
+from backend.app.models import MLModel, User
+from backend.app.schemas.ml import MLModelList, MLModelResponse
+from backend.app.security import get_current_user
 
 router = APIRouter()
 

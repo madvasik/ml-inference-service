@@ -1,14 +1,13 @@
-import pytest
 from fastapi import status
-from unittest.mock import patch
+
+from backend.app.models import MLModel, Prediction, PredictionStatus, User, UserRole
+from backend.app.security import create_access_token, get_password_hash
 
 
 def test_get_prediction_not_found(client, test_user):
     """Тест получения несуществующего предсказания"""
-    from backend.app.auth.jwt import create_access_token
-    
     token = create_access_token({"sub": str(test_user.id), "type": "access"})
-    
+
     response = client.get(
         "/api/v1/predictions/99999",
         headers={"Authorization": f"Bearer {token}"}
@@ -20,12 +19,6 @@ def test_get_prediction_not_found(client, test_user):
 
 def test_get_prediction_other_user(client, test_user, db_session):
     """Тест получения предсказания другого пользователя"""
-    from backend.app.auth.jwt import create_access_token
-    from backend.app.domain.models.user import User, UserRole
-    from backend.app.domain.models.prediction import Prediction, PredictionStatus
-    from backend.app.domain.models.ml_model import MLModel
-    from backend.app.auth.security import get_password_hash
-    
     # Создаем другого пользователя
     other_user = User(
         email="other@example.com",
@@ -69,14 +62,3 @@ def test_get_prediction_other_user(client, test_user, db_session):
     
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert "Prediction not found" in response.json()["detail"]
-
-
-@pytest.mark.skip(reason="Edge case: Celery errors are handled by exception handlers in production, but TestClient raises them directly")
-def test_create_prediction_celery_error(client, test_user, test_ml_model):
-    """Тест обработки ошибки Celery при создании предсказания
-    
-    Примечание: В production ошибки Celery обрабатываются через general_exception_handler,
-    но в тестовом окружении TestClient пробрасывает исключения напрямую.
-    Этот edge case сложно протестировать без реального Celery брокера.
-    """
-    pass
