@@ -10,9 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from backend.app.config import settings
 from backend.app.db import Base
-import backend.app.models.billing  # noqa: F401
-import backend.app.models.ml  # noqa: F401
-import backend.app.models.user  # noqa: F401
+import backend.app.models  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

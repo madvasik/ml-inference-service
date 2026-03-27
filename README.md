@@ -1,99 +1,116 @@
 # ML Inference Service
 
-ML-сервис для асинхронных предсказаний по пользовательским `scikit-learn` моделям с JWT-аутентификацией, внутренним биллингом в кредитах, loyalty-скидками, Streamlit-дашбордом и мониторингом через Prometheus/Grafana.
+Масштабируемый ML-сервис для асинхронных предсказаний по пользовательским `scikit-learn` моделям. Сервис включает JWT-аутентификацию, биллинг во внутренних кредитах, loyalty-скидки, Streamlit dashboard, Prometheus/Grafana и запуск всего стека одной командой через Docker Compose.
 
-## Цель проекта
+## Цель и задачи
 
-Цель проекта — дать пользователю простой API, в котором можно:
+Цель проекта: дать пользователю API, через который он может загрузить свою модель, отправить асинхронный inference-запрос и заплатить кредитами только за успешный результат.
 
-- зарегистрироваться и получить JWT;
-- пополнить внутренний баланс кредитов;
-- загрузить свою `pkl`-модель;
-- создать асинхронный inference-запрос;
-- получить результат позже через API;
-- видеть расход кредитов и статистику использования.
+Задачи проекта:
 
-## Что реализовано
-
-- REST API на `FastAPI` со Swagger/OpenAPI;
-- JWT auth c ролями `user` и `admin`;
-- загрузка `scikit-learn` моделей;
-- асинхронные предсказания через `Celery + Redis`;
-- PostgreSQL как основная БД;
-- внутренний биллинг с историей транзакций;
-- loyalty tiers и автоматические скидки;
-- ежемесячный пересчет loyalty через `celery-beat`;
-- админский Streamlit dashboard;
-- метрики backend и worker для `Prometheus`;
-- готовая визуализация в `Grafana`;
-- unit/integration/e2e тесты.
-
-Примечание по платежному шлюзу: в учебной реализации используется `mock`-провайдер. Внешний контракт пополнения и внутренняя транзакционная логика уже отделены, поэтому реальный gateway можно подключить без перестройки основного домена.
+- регистрация, аутентификация и роли пользователей;
+- загрузка `pkl`-моделей и запуск предсказаний через REST API;
+- асинхронная обработка запросов через Celery + Redis;
+- биллинг с атомарными транзакциями и историей операций;
+- loyalty/discount механика с ежемесячным пересчётом;
+- аналитический dashboard для администратора;
+- мониторинг через Prometheus и Grafana;
+- автодокументация Swagger/OpenAPI;
+- тестовое покрытие выше 70%.
 
 ## Архитектура
 
 Компоненты:
 
-- `backend` — HTTP API, бизнес-логика, работа с БД, JWT, billing.
-- `postgres` — пользователи, балансы, модели, предсказания, платежи, транзакции, loyalty rules.
-- `redis` — брокер и result backend для Celery.
-- `celery` — выполняет inference и публикует worker metrics.
-- `celery-beat` — запускает ежемесячный пересчет loyalty.
-- `streamlit` — админский дашборд.
-- `prometheus` — сбор метрик backend и celery worker.
-- `grafana` — готовые дашборды для мониторинга.
+- `backend` — FastAPI, JWT, SQLAlchemy, Swagger/OpenAPI, доменная логика.
+- `postgres` — хранение пользователей, балансов, моделей, предсказаний, платежей, транзакций и loyalty rules.
+- `redis` — брокер и result backend Celery.
+- `celery` — выполнение предсказаний в фоне.
+- `celery-beat` — ежемесячный пересчёт loyalty tiers.
+- `dashboard` — Streamlit-панель для администратора.
+- `prometheus` — сбор метрик backend и worker.
+- `grafana` — визуализация метрик.
 
-### Схема взаимодействия
+Упрощённые принципы архитектуры:
 
-1. Пользователь регистрируется или логинится и получает JWT.
-2. Пользователь пополняет баланс через billing API.
-3. Пользователь загружает `pkl`-модель, backend валидирует файл и сохраняет метаданные.
-4. `POST /api/v1/predictions` создает запись `prediction` со snapshot стоимости.
-5. Backend ставит задачу в Celery и сразу возвращает `202 Accepted`.
-6. Worker загружает модель, делает inference и только после успеха списывает кредиты.
-7. Результат сохраняется в БД, а пользователь читает его через `GET /api/v1/predictions/{id}`.
-8. Prometheus собирает `/metrics` у backend и worker, Grafana показывает графики.
+- все ORM-модели лежат в одном файле `backend/app/models.py`;
+- все Pydantic-схемы лежат в одном файле `backend/app/schemas.py`;
+- HTTP-роуты лежат в одном уровне `backend/app/api/*.py`, без лишней папки `routes`;
+- критичные правила биллинга сосредоточены в `backend/app/billing.py`;
+- тяжёлая асинхронная логика вынесена в `backend/app/worker.py`.
 
-## Упрощенная структура проекта
+## Используемые технологии
+
+- Python 3.11+
+- FastAPI
+- SQLAlchemy
+- Alembic
+- PostgreSQL
+- Celery
+- Redis
+- Scikit-learn
+- Streamlit
+- Prometheus
+- Grafana
+- Docker / Docker Compose
+- Pytest / pytest-cov
+
+## Структура проекта
 
 ```text
 backend/
   alembic/                    # миграции БД
   app/
-    api/routes/              # REST endpoints
-    models/                  # SQLAlchemy модели по доменам
-    schemas/                 # Pydantic схемы по доменам
-    billing.py               # кредиты, платежи, транзакции
-    bootstrap.py             # стартовый admin и seed-инициализация
-    config.py                # настройки из env
-    db.py                    # engine, SessionLocal, readiness
-    loyalty.py               # tiers, скидки, monthly recalculation
-    main.py                  # app factory и wiring
-    metrics.py               # Prometheus метрики
-    middleware.py            # rate limit и metrics middleware
-    ml.py                    # работа с файлами моделей и predict
-    security.py              # JWT, password hashing, current user/admin
-    worker.py                # Celery app, tasks, worker metrics
-streamlit_dashboard/
-  api_client.py              # запросы к backend
-  main.py                    # вход в Streamlit
-  views.py                   # все вкладки dashboard
+    api/                      # HTTP endpoints
+      admin.py
+      auth.py
+      billing.py
+      models.py
+      predictions.py
+      system.py
+      users.py
+    billing.py                # кредиты, платежи, транзакции
+    config.py                 # env-настройки
+    db.py                     # engine, SessionLocal, health/schema probes
+    log_config.py             # логирование
+    loyalty.py                # tiers, скидки, monthly recalculation
+    main.py                   # точка входа FastAPI
+    metrics.py                # Prometheus-метрики
+    middleware.py             # rate limiting и API-метрики
+    ml.py                     # загрузка и inference моделей
+    models.py                 # все SQLAlchemy модели
+    schemas.py                # все Pydantic схемы
+    security.py               # JWT, passwords, current user/admin
+    worker.py                 # Celery app, worker tasks, beat tasks
+dashboard/
+  api_client.py               # клиент к backend API
+  config.py                   # настройки dashboard
+  main.py                     # вход в Streamlit
+  views.py                    # вкладки и графики
 infra/
-  docker/                    # Dockerfiles
-  monitoring/                # Prometheus и Grafana provisioning
+  docker/                     # Dockerfiles backend/celery/dashboard
+  monitoring/                 # Prometheus + Grafana provisioning
 tests/
-  unit/                      # модульные тесты
-  integration/               # сценарии API + DB
-  e2e/                       # проверки живого docker-стека
-  conftest.py                # общие фикстуры
-  helpers.py                 # повторно используемые test helpers
+  unit/                       # точечные проверки API и доменной логики
+  integration/                # сквозные сценарии через API + БД
+  e2e/                        # проверки живого docker-стека
 tools/
-  smoke.py                   # быстрый локальный smoke-сценарий
-docker-compose.yml           # единая точка запуска всего стека
-Makefile                     # команды запуска и тестов
+  smoke.py                    # локальный smoke сценарий без docker
+docker-compose.yml            # запуск всего стека
+README_for_me.md              # упрощённое объяснение проекта
 ```
 
-## Как запустить
+## Схема взаимодействия компонентов
+
+1. Пользователь регистрируется или логинится и получает `access_token`.
+2. Пользователь пополняет баланс кредитов через billing API.
+3. Пользователь загружает `model.pkl`, backend сохраняет файл и метаданные.
+4. `POST /api/v1/predictions` создаёт запись `prediction` и отправляет задачу в Celery.
+5. Celery worker загружает модель, считает результат и только после успеха списывает кредиты.
+6. Результат сохраняется в БД и доступен через `GET /api/v1/predictions/{prediction_id}`.
+7. Prometheus собирает метрики с backend и worker, Grafana показывает dashboard.
+
+## Как запустить проект
 
 ### Полный стек через Docker Compose
 
@@ -102,36 +119,22 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Или через make:
-
-```bash
-make stack-up
-```
-
-После старта доступны:
+После запуска доступны:
 
 - API: `http://localhost:8000`
 - Swagger: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
-- Streamlit: `http://localhost:8501`
+- Dashboard: `http://localhost:8501`
 - Prometheus: `http://localhost:9090`
 - Grafana: `http://localhost:3000`
 
-Администратор создается автоматически из:
-
-- `INITIAL_ADMIN_EMAIL`
-- `INITIAL_ADMIN_PASSWORD`
-- `INITIAL_ADMIN_CREDITS`
-
-### Локальный smoke без PostgreSQL и Redis
+### Локальная smoke-проверка без Docker
 
 ```bash
 make smoke
 ```
 
-Smoke поднимает backend на `SQLite`, включает eager Celery и прогоняет сценарий:
-
-`register -> payment -> model upload -> prediction`
+Smoke поднимает backend на SQLite, включает eager Celery и проверяет сценарий `register -> payment -> model upload -> prediction`.
 
 ## Основные API endpoints
 
@@ -183,14 +186,14 @@ System:
 
 ## Как пользоваться API
 
-Короткий сценарий:
+Типовой пользовательский сценарий:
 
 1. Зарегистрировать пользователя.
 2. Взять `access_token` из ответа.
-3. Пополнить баланс запросом `POST /api/v1/billing/payments`.
+3. Пополнить баланс через `POST /api/v1/billing/payments`.
 4. Загрузить `model.pkl`.
 5. Создать prediction.
-6. Периодически читать `GET /api/v1/predictions/{id}`.
+6. Периодически опрашивать `GET /api/v1/predictions/{prediction_id}`.
 
 Пример:
 
@@ -211,35 +214,34 @@ curl -X POST http://localhost:8000/api/v1/billing/payments \
 
 Сущности:
 
-- `balances` — текущий остаток кредитов.
-- `payments` — пополнения.
-- `transactions` — история кредитов и списаний.
+- `balances` — текущий баланс пользователя;
+- `payments` — пополнения;
+- `transactions` — история начислений и списаний;
+- `predictions.credits_spent` — snapshot итоговой цены конкретного запроса.
 
-Ключевые правила:
+Правила:
 
-- `1 amount = 1 credit`.
-- Пополнение добавляет `payment` и `credit transaction` в одной DB-транзакции.
-- Списание за prediction происходит только после успешного inference.
-- У prediction debit идемпотентен: повторное выполнение не создает второе списание, потому что списание привязано к `prediction_id`.
+- `1 amount = 1 credit`;
+- пополнение создаёт `payment` и `credit transaction`;
+- списание за prediction выполняется только после успешного inference;
+- транзакция по prediction уникальна по `prediction_id`, поэтому повторный запуск не спишет кредиты второй раз.
 
 ### Атомарность и обработка ошибок
 
-- При пополнении сначала создается `payment`, затем `credit transaction`, затем коммитится все вместе.
-- При исполнении prediction worker блокирует строки через `with_for_update`, повторно проверяет статус и баланс и только потом создает `debit transaction`.
-- Если очередь недоступна на этапе постановки задачи, prediction помечается как `failed` с причиной `queue_unavailable`, а кредиты не списываются.
-- Если в момент фактического исполнения у пользователя уже не хватает кредитов, prediction завершается как `failed` с причиной `insufficient_credits`.
-- `/health` отделяет проблему подключения к БД от проблемы неинициализированной схемы.
+- `create_payment()` делает `payment + credit transaction + balance update` в одной DB-транзакции и откатывает всё при исключении.
+- worker блокирует баланс пользователя через `with_for_update()` перед фактическим списанием.
+- если очередь недоступна при постановке задачи, prediction помечается как `failed` с причиной `queue_unavailable`, но списания нет.
+- если inference падает, prediction получает `failed`, а баланс не меняется.
+- если к моменту реального списания кредитов уже не хватает, prediction получает `failed` с причиной `insufficient_credits`.
 
 ## Как работает асинхронная обработка
 
-- API не делает inference внутри HTTP-запроса.
-- `POST /api/v1/predictions` только создает запись и отправляет задачу в Celery.
-- `backend/app/worker.py` содержит Celery app и обе фоновые задачи:
-  - `execute_prediction`
-  - `recalculate_monthly_loyalty`
-- Worker публикует собственные Prometheus metrics на порту `9091`.
+- HTTP API не делает inference внутри запроса.
+- `POST /api/v1/predictions` только валидирует вход, сохраняет snapshot цены и ставит задачу в Celery.
+- `backend/app/worker.py` выполняет `execute_prediction`.
+- `celery-beat` раз в месяц запускает `recalculate_monthly_loyalty`.
 
-## Loyalty и скидки
+## Loyalty / Discount система
 
 Уровни:
 
@@ -250,42 +252,101 @@ curl -X POST http://localhost:8000/api/v1/billing/payments \
 
 Правила по умолчанию:
 
-- `Bronze`: от `50` успешных предсказаний за прошлый месяц, скидка `5%`
-- `Silver`: от `200`, скидка `10%`
-- `Gold`: от `500`, скидка `20%`
+- Bronze: от `50` успешных предсказаний за прошлый месяц, скидка `5%`;
+- Silver: от `200`, скидка `10%`;
+- Gold: от `500`, скидка `20%`.
 
 Особенности реализации:
 
-- Правила хранятся в таблице `loyalty_tier_rules`, а не только в коде.
-- Скидка фиксируется в момент создания prediction: `base_cost`, `discount_percent`, `discount_amount`, `credits_spent`.
-- Изменение уровня позже не пересчитывает старые predictions.
-- `celery-beat` раз в месяц пересчитывает уровень пользователя по числу успешных predictions за предыдущий месяц.
+- правила лежат в таблице `loyalty_tier_rules`, а не захардкожены в API;
+- при создании prediction фиксируются `base_cost`, `discount_percent`, `discount_amount`, `credits_spent`;
+- ежемесячный пересчёт запускается отдельной фоновой задачей.
 
 ## Мониторинг
 
-Backend:
+Мониторинг включает:
 
-- endpoint: `GET /metrics`
+- backend-метрики через `GET /metrics`;
+- worker-метрики через `http://localhost:9091/metrics`;
+- Prometheus для сбора;
+- Grafana для визуализации.
 
-Worker:
+В Grafana уже подключён Prometheus datasource и provisioned dashboard.
 
-- endpoint: `http://localhost:9091/metrics`
+## Как запускать тесты
 
-Prometheus:
+```bash
+make test
+make smoke
+make e2e
+```
 
-- backend scrape target: `backend:8000/metrics`
-- worker scrape target: `celery:9091/metrics`
+Что реально проверяется:
 
-Grafana:
+- auth, JWT и роли;
+- загрузка модели;
+- асинхронное предсказание;
+- списание кредитов только после успеха;
+- откаты billing-операций при ошибках;
+- loyalty tiers и месячный пересчёт;
+- admin API;
+- health/metrics/openapi;
+- live docker stack и monitoring.
 
-- автоматически получает provisioned Prometheus datasource
-- использует dashboard из `infra/monitoring/grafana/dashboards/ml_service_dashboard.json`
+## Покрытие тестами
 
-Проверка состояния:
+Последний локальный прогон `pytest` после рефакторинга:
 
-- `GET /health`
-- `http://localhost:9090/-/healthy`
-- `http://localhost:3000/api/health`
+- `36 passed`
+- total coverage: `84.46%`
+
+Это выше требования ТЗ `> 70%`.
+
+## ENV переменные
+
+Основные:
+
+- `DATABASE_URL`
+- `SECRET_KEY`
+- `ALGORITHM`
+- `ACCESS_TOKEN_EXPIRE_MINUTES`
+- `REFRESH_TOKEN_EXPIRE_DAYS`
+- `PREDICTION_COST`
+- `DEBUG`
+- `API_V1_PREFIX`
+- `ML_MODELS_DIR`
+- `CELERY_BROKER_URL`
+- `CELERY_RESULT_BACKEND`
+- `CELERY_TASK_ALWAYS_EAGER`
+- `RATE_LIMIT_PER_MINUTE`
+- `RATE_LIMIT_PER_USER_PER_MINUTE`
+- `MAX_UPLOAD_SIZE_MB`
+- `LOG_JSON_FORMAT`
+- `INITIAL_ADMIN_EMAIL`
+- `INITIAL_ADMIN_PASSWORD`
+- `INITIAL_ADMIN_CREDITS`
+
+Все чувствительные значения должны задаваться через `.env` или переменные окружения.
+
+## Краткий бизнес-план
+
+УТП:
+
+- простой self-service ML inference для пользователей, которым нужно быстро опубликовать `scikit-learn` модель без отдельного ML Ops контура;
+- прозрачная модель оплаты: платёж только за успешные inference-запросы;
+- loyalty-механика стимулирует возвращаемость и рост потребления.
+
+Финмодель:
+
+- доход формируется из продажи кредитов;
+- базовая цена prediction задаётся конфигом;
+- loyalty-скидки уменьшают цену на запрос, но повышают retention;
+- dashboard и метрики позволяют отслеживать воронку: пользователи -> пополнения -> успешные prediction -> расход кредитов.
+
+Подняты:
+
+- Prometheus с готовым scrape-конфигом
+- Grafana с подключенным datasource и дашбордом
 
 ## Тесты
 
@@ -293,78 +354,66 @@ Grafana:
 
 ```bash
 make test
-make test-unit
 make smoke
-make e2e
-```
-
-Эквиваленты:
-
-```bash
-venv/bin/pytest
-venv/bin/python tools/smoke.py
-docker compose up -d --build
 make e2e
 ```
 
 Что проверяется:
 
-- auth, JWT, refresh flow, роли;
-- загрузка и чтение моделей;
-- async prediction flow и queue failure;
-- списание только за успешный prediction;
-- платежи, баланс, транзакции;
-- loyalty скидки и monthly recalculation;
-- health, rate limiting, backend metrics, worker metrics;
-- monitoring stack: backend, Prometheus, Grafana.
+- auth и JWT
+- роли и admin endpoints
+- загрузка модели
+- async prediction flow
+- списание кредитов только после успешного worker run
+- rollback платежей при ошибке
+- loyalty tiers и перерасчет
+- health и metrics
 
-Последний локальный прогон после рефакторинга:
-
-- `pytest`: `171 passed`
-- coverage: `89.65%`
+Текущее покрытие `pytest`: выше `70%`.
 
 ## Переменные окружения
 
-Ключевые настройки:
+Основные переменные:
 
-| Переменная | Назначение |
-| --- | --- |
-| `DATABASE_URL` | строка подключения к PostgreSQL |
-| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | параметры postgres |
-| `SECRET_KEY`, `ALGORITHM` | JWT |
-| `ACCESS_TOKEN_EXPIRE_MINUTES`, `REFRESH_TOKEN_EXPIRE_DAYS` | TTL токенов |
-| `PREDICTION_COST` | базовая цена prediction в кредитах |
-| `ML_MODELS_DIR` | директория хранения моделей |
-| `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | Celery/Redis |
-| `CELERY_TASK_ALWAYS_EAGER` | eager-mode для локального smoke/tests |
-| `RATE_LIMIT_PER_MINUTE`, `RATE_LIMIT_PER_USER_PER_MINUTE` | rate limiting |
-| `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_PASSWORD`, `INITIAL_ADMIN_CREDITS` | bootstrap admin |
-| `MAX_UPLOAD_SIZE_MB` | лимит размера модели |
-| `CORS_ORIGINS` | CORS |
-| `LOG_JSON_FORMAT`, `DEBUG` | runtime/logging режим |
+- `DATABASE_URL`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `POSTGRES_DB`
+- `SECRET_KEY`
+- `ALGORITHM`
+- `ACCESS_TOKEN_EXPIRE_MINUTES`
+- `REFRESH_TOKEN_EXPIRE_DAYS`
+- `PREDICTION_COST`
+- `DEBUG`
+- `API_V1_PREFIX`
+- `ML_MODELS_DIR`
+- `REDIS_URL`
+- `CELERY_BROKER_URL`
+- `CELERY_RESULT_BACKEND`
+- `CELERY_TASK_ALWAYS_EAGER`
+- `RATE_LIMIT_PER_MINUTE`
+- `RATE_LIMIT_PER_USER_PER_MINUTE`
+- `CORS_ORIGINS`
+- `MAX_UPLOAD_SIZE_MB`
+- `LOG_JSON_FORMAT`
+- `INITIAL_ADMIN_EMAIL`
+- `INITIAL_ADMIN_PASSWORD`
+- `INITIAL_ADMIN_CREDITS`
 
-Полный список и значения по умолчанию: [`.env.example`](.env.example)
+Пример настроек есть в [`.env.example`](/Users/madvas/Documents/ml-inference-service/.env.example).
 
 ## Краткий бизнес-план
 
-### УТП
+УТП:
 
-Сервис дает готовый inference backend для небольших команд и учебных проектов:
+- простой сервис, где пользователь загружает свою модель и сразу получает платные асинхронные предсказания;
+- billing встроен в продукт, а не вынесен в отдельный сложный контур;
+- loyalty делает сервис удобнее для активных пользователей и стимулирует повторное использование.
 
-- не нужно отдельно писать auth, billing и async execution;
-- можно быстро загрузить `scikit-learn` модель и сразу использовать API;
-- есть готовый monitoring и админская панель.
+Финмодель:
 
-### Целевая аудитория
-
-- внутренние продуктовые команды;
-- учебные проекты;
-- небольшие ML-команды;
-- команды, которым нужен простой inference backend без отдельной платформы.
-
-### Финмодель
-
-- пользователь пополняет кредитный баланс;
-- каждый успешный inference списывает кредиты;
-- loyalty tiers понижают стоимость для активных пользователей и стимулируют retention;
-- в рост можно добавить тарифы по типу модели, SLA, приоритетные очереди, промокоды и бонусные кредиты.
+- пользователь покупает внутренние кредиты;
+- каждый успешный prediction списывает фиксированную стоимость;
+- активные пользователи получают скидку по tier-модели;
+- доход растет за счет числа предсказаний и пополнений баланса;
+- далее можно подключить реальный платежный шлюз без изменения доменной модели.

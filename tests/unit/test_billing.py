@@ -1,107 +1,68 @@
+from unittest.mock import patch
+
 import pytest
-from fastapi import status
+
+from backend.app.billing import charge_prediction, create_payment, get_balance
+from backend.app.models import Balance, Payment, Prediction, PredictionStatus, Transaction, TransactionType
+from tests.helpers import auth_headers
 
 
-def _login(client, email: str, password: str) -> str:
-    response = client.post(
-        "/api/v1/auth/login",
-        json={"email": email, "password": password},
+def test_payment_endpoint_adds_credits_and_transaction(client, access_token_for, test_user, db_session):
+    headers = auth_headers(access_token_for(test_user))
+    starting_balance = get_balance(db_session, test_user.id)
+
+    response = client.post("/api/v1/billing/payments", headers=headers, json={"amount": 75})
+
+    assert response.status_code == 200
+    assert response.json()["credits"] == starting_balance + 75
+    assert db_session.query(Payment).filter(Payment.user_id == test_user.id).count() == 1
+    transaction = db_session.query(Transaction).filter(Transaction.user_id == test_user.id).one()
+    assert transaction.type == TransactionType.CREDIT
+    assert transaction.amount == 75
+
+
+def test_create_payment_rolls_back_on_failure(db_session, test_user):
+    with patch("backend.app.billing.add_credits", side_effect=RuntimeError("boom")):
+        with pytest.raises(RuntimeError):
+            create_payment(db_session, test_user.id, 20)
+
+    assert db_session.query(Payment).filter(Payment.user_id == test_user.id).count() == 0
+    assert db_session.query(Transaction).filter(Transaction.user_id == test_user.id).count() == 0
+    assert get_balance(db_session, test_user.id) == 1000
+
+
+def test_charge_prediction_is_idempotent(db_session, test_user, test_ml_model):
+    prediction = Prediction(
+        user_id=test_user.id,
+        model_id=test_ml_model.id,
+        input_data={"feature1": 1},
+        status=PredictionStatus.PENDING,
+        base_cost=10,
+        discount_percent=0,
+        discount_amount=0,
+        credits_spent=10,
     )
-    return response.json()["access_token"]
+    db_session.add(prediction)
+    db_session.commit()
+    db_session.refresh(prediction)
+
+    first_success, first_transaction = charge_prediction(db_session, prediction)
+    db_session.commit()
+    second_success, second_transaction = charge_prediction(db_session, prediction)
+
+    balance = db_session.query(Balance).filter(Balance.user_id == test_user.id).one()
+    assert first_success is True
+    assert second_success is True
+    assert first_transaction.id == second_transaction.id
+    assert balance.credits == 990
+    assert db_session.query(Transaction).filter(Transaction.user_id == test_user.id).count() == 1
 
 
-def test_get_balance(client, test_user):
-    """Тест получения баланса"""
-    token = _login(client, test_user.email, "testpassword")
-    
-    response = client.get(
-        "/api/v1/billing/balance",
-        headers={"Authorization": f"Bearer {token}"}
-    )
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    assert "credits" in data
-    assert data["credits"] >= 0
-
-
-def test_create_payment_adds_credits(client, test_user):
-    """Тест пополнения баланса"""
-    token = _login(client, test_user.email, "testpassword")
-
-    balance_response = client.get(
-        "/api/v1/billing/balance",
-        headers={"Authorization": f"Bearer {token}"}
-    )
-    initial_balance = balance_response.json()["credits"]
-
-    response = client.post(
-        "/api/v1/billing/payments",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"amount": 100}
-    )
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    assert data["payment"]["status"] == "confirmed"
-    assert data["payment"]["amount"] == 100
-    assert data["credits"] == initial_balance + 100
-
-
-def test_create_payment_negative_amount(client, test_user):
-    """Тест пополнения с отрицательной суммой"""
-    token = _login(client, test_user.email, "testpassword")
-
-    response = client.post(
-        "/api/v1/billing/payments",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"amount": -10}
-    )
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-
-def test_list_transactions(client, test_user):
-    """Тест получения списка транзакций"""
-    token = _login(client, test_user.email, "testpassword")
-    
-    response = client.get(
-        "/api/v1/billing/transactions",
-        headers={"Authorization": f"Bearer {token}"}
-    )
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    assert "transactions" in data
-    assert "total" in data
-
-
-def test_create_payment_returns_confirmed_payment(client, test_user):
-    token = _login(client, test_user.email, "testpassword")
-
+def test_billing_routes_validate_positive_amount(client, access_token_for, test_user):
     response = client.post(
         "/api/v1/billing/payments",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"amount": 75},
+        headers=auth_headers(access_token_for(test_user)),
+        json={"amount": -1},
     )
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    assert data["payment"]["status"] == "confirmed"
-    assert data["payment"]["amount"] == 75
-    assert data["credits"] >= 75
 
-
-def test_list_payments(client, test_user):
-    token = _login(client, test_user.email, "testpassword")
-
-    response = client.post(
-        "/api/v1/billing/payments",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"amount": 10},
-    )
-    assert response.status_code == status.HTTP_200_OK
-
-    list_response = client.get(
-        "/api/v1/billing/payments",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert list_response.status_code == status.HTTP_200_OK
-    data = list_response.json()
-    assert data["total"] >= 1
-    assert data["payments"][0]["provider"] == "mock"
+    assert response.status_code == 400

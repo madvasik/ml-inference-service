@@ -1,7 +1,6 @@
 import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Tuple
 
 from sqlalchemy.orm import Session
 
@@ -15,10 +14,10 @@ class PaymentResult:
     credits: int
 
 
-def ensure_balance(db: Session, user_id: int) -> Tuple[Balance, bool]:
+def ensure_balance(db: Session, user_id: int) -> tuple[Balance, bool]:
     balance = db.query(Balance).filter(Balance.user_id == user_id).first()
     created = False
-    if not balance:
+    if balance is None:
         balance = Balance(user_id=user_id, credits=0)
         db.add(balance)
         db.flush()
@@ -27,11 +26,8 @@ def ensure_balance(db: Session, user_id: int) -> Tuple[Balance, bool]:
 
 
 def get_balance(db: Session, user_id: int) -> int:
-    balance, created = ensure_balance(db, user_id)
-    if created:
-        db.commit()
-        db.refresh(balance)
-    return balance.credits
+    balance = db.query(Balance).filter(Balance.user_id == user_id).first()
+    return 0 if balance is None else balance.credits
 
 
 def calculate_discount_amount(base_cost: int, discount_percent: int) -> int:
@@ -51,6 +47,15 @@ def get_prediction_debit_transaction(db: Session, prediction_id: int) -> Transac
     return db.query(Transaction).filter(Transaction.prediction_id == prediction_id).first()
 
 
+def _lock_balance(db: Session, user_id: int) -> Balance:
+    balance = db.query(Balance).filter(Balance.user_id == user_id).with_for_update().first()
+    if balance is None:
+        balance = Balance(user_id=user_id, credits=0)
+        db.add(balance)
+        db.flush()
+    return balance
+
+
 def charge_prediction(
     db: Session,
     prediction: Prediction,
@@ -60,11 +65,7 @@ def charge_prediction(
     if existing_transaction is not None:
         return True, existing_transaction
 
-    balance = db.query(Balance).filter(Balance.user_id == prediction.user_id).with_for_update().first()
-    if not balance:
-        balance = Balance(user_id=prediction.user_id, credits=0)
-        db.add(balance)
-        db.flush()
+    balance = _lock_balance(db, prediction.user_id)
 
     if balance.credits < prediction.credits_spent:
         return False, None
@@ -82,30 +83,6 @@ def charge_prediction(
     return True, transaction
 
 
-def deduct_credits(db: Session, user_id: int, amount: int, description: str | None = None) -> bool:
-    balance = db.query(Balance).filter(Balance.user_id == user_id).with_for_update().first()
-    if not balance:
-        balance = Balance(user_id=user_id, credits=0)
-        db.add(balance)
-        db.flush()
-
-    if balance.credits < amount:
-        return False
-
-    balance.credits -= amount
-    db.add(
-        Transaction(
-            user_id=user_id,
-            amount=amount,
-            type=TransactionType.DEBIT,
-            description=description or f"Prediction cost: {amount} credits",
-        )
-    )
-    db.commit()
-    billing_transactions_total.labels(type="debit").inc()
-    return True
-
-
 def add_credits(
     db: Session,
     user_id: int,
@@ -114,12 +91,7 @@ def add_credits(
     payment: Payment | None = None,
     commit: bool = True,
 ) -> Transaction:
-    balance = db.query(Balance).filter(Balance.user_id == user_id).with_for_update().first()
-    if not balance:
-        balance = Balance(user_id=user_id, credits=0)
-        db.add(balance)
-        db.flush()
-
+    balance = _lock_balance(db, user_id)
     balance.credits += amount
 
     transaction = Transaction(
@@ -137,25 +109,30 @@ def add_credits(
 
 
 def create_payment(db: Session, user_id: int, amount: int, provider: str = "mock") -> PaymentResult:
-    payment = Payment(
-        user_id=user_id,
-        amount=amount,
-        provider=provider,
-        status=PaymentStatus.CONFIRMED,
-        confirmed_at=datetime.now(timezone.utc),
-    )
-    db.add(payment)
-    db.flush()
-    payment.external_id = f"{provider}:{payment.id}"
-    add_credits(
-        db,
-        user_id=user_id,
-        amount=payment.amount,
-        payment=payment,
-        description=f"Mock payment #{payment.id}",
-        commit=False,
-    )
-    db.commit()
+    try:
+        payment = Payment(
+            user_id=user_id,
+            amount=amount,
+            provider=provider,
+            status=PaymentStatus.CONFIRMED,
+            confirmed_at=datetime.now(timezone.utc),
+        )
+        db.add(payment)
+        db.flush()
+        payment.external_id = f"{provider}:{payment.id}"
+        add_credits(
+            db,
+            user_id=user_id,
+            amount=payment.amount,
+            payment=payment,
+            description=f"Mock payment #{payment.id}",
+            commit=False,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
     db.refresh(payment)
     payments_total.labels(status=payment.status.value, provider=payment.provider).inc()
     return PaymentResult(payment=payment, credits=get_balance(db, user_id))

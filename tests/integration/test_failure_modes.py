@@ -1,46 +1,46 @@
 from unittest.mock import patch
 
-from fastapi import status
-
-from backend.app.models import Balance
+from backend.app.models import Prediction, PredictionStatus, Transaction
+from backend.app.worker import execute_prediction
 from tests.helpers import auth_headers
 
 
-def test_prediction_requires_sufficient_balance(client, db_session, test_user, test_ml_model):
-    login_response = client.post(
-        "/api/v1/auth/login",
-        json={"email": test_user.email, "password": "testpassword"},
-    )
-    assert login_response.status_code == status.HTTP_200_OK
-    headers = auth_headers(login_response.json()["access_token"])
+def test_queue_failure_marks_prediction_failed_without_debit(client, db_session, test_user, test_ml_model, access_token_for):
+    headers = auth_headers(access_token_for(test_user))
 
-    balance = db_session.query(Balance).filter(Balance.user_id == test_user.id).first()
-    assert balance is not None
-    balance.credits = 0
-    db_session.commit()
-
-    prediction_response = client.post(
-        "/api/v1/predictions",
-        headers=headers,
-        json={"model_id": test_ml_model.id, "input_data": {"feature1": 1.0, "feature2": 2.0}},
-    )
-    assert prediction_response.status_code == status.HTTP_402_PAYMENT_REQUIRED
-    assert "Insufficient balance" in prediction_response.json()["detail"]
-
-
-def test_queue_failure_marks_prediction_failed(client, test_user, test_ml_model):
-    from backend.app.security import create_access_token
-
-    token = create_access_token(data={"sub": str(test_user.id), "email": test_user.email})
-    headers = auth_headers(token)
-
-    with patch("backend.app.api.routes.predictions.execute_prediction.delay", side_effect=RuntimeError("queue down")):
+    with patch("backend.app.api.predictions.execute_prediction.delay", side_effect=RuntimeError("queue down")):
         response = client.post(
             "/api/v1/predictions",
             headers=headers,
             json={"model_id": test_ml_model.id, "input_data": {"feature1": 1.0, "feature2": 2.0}},
         )
 
-    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-    detail = response.json()["detail"]
-    assert "queue" in detail.lower()
+    assert response.status_code == 503
+    prediction = db_session.query(Prediction).filter(Prediction.user_id == test_user.id).order_by(Prediction.id.desc()).one()
+    assert prediction.status == PredictionStatus.FAILED
+    assert prediction.failure_reason == "queue_unavailable"
+    assert db_session.query(Transaction).filter(Transaction.user_id == test_user.id).count() == 0
+
+
+def test_worker_failure_keeps_balance_unchanged(client, db_session, test_user, test_ml_model, access_token_for):
+    headers = auth_headers(access_token_for(test_user))
+
+    with patch("backend.app.api.predictions.execute_prediction.delay", return_value=type("Task", (), {"id": "queued"})()):
+        create_response = client.post(
+            "/api/v1/predictions",
+            headers=headers,
+            json={"model_id": test_ml_model.id, "input_data": {"feature1": 1.0, "feature2": 2.0}},
+        )
+    prediction_id = create_response.json()["prediction_id"]
+
+    execute_prediction._db = db_session
+    with patch("backend.app.worker.load_model", side_effect=ValueError("broken model")):
+        result = execute_prediction.run(prediction_id=prediction_id)
+
+    balance_response = client.get("/api/v1/billing/balance", headers=headers)
+    prediction_response = client.get(f"/api/v1/predictions/{prediction_id}", headers=headers)
+
+    assert result["status"] == "failed"
+    assert balance_response.json()["credits"] == 1000
+    assert prediction_response.json()["status"] == PredictionStatus.FAILED.value
+    assert db_session.query(Transaction).filter(Transaction.user_id == test_user.id).count() == 0

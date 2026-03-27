@@ -1,136 +1,136 @@
 # README for me
 
-Этот файл объясняет проект простым языком.
+Этот файл нужен, чтобы быстро войти в проект без сложных слов и лишней архитектуры.
 
-## Как понять проект за 5 минут
+## Как разобраться в проекте за 5 минут
 
-Самая короткая версия:
+Смотри на сервис как на одну простую цепочку:
 
-- пользователь регистрируется;
-- пополняет кредиты;
-- загружает `pkl`-модель;
-- создает prediction;
-- backend быстро отвечает, а реальная работа уходит в Celery;
-- после успешного результата кредиты списываются;
-- админ может смотреть общую статистику в Streamlit.
+1. Пользователь регистрируется и получает токен.
+2. Пополняет баланс кредитов.
+3. Загружает свою `pkl`-модель.
+4. Создаёт prediction.
+5. Worker считает результат в фоне.
+6. Кредиты списываются только если prediction завершился успешно.
 
-Если хочешь очень быстро войти в код, открой файлы в таком порядке:
+Если понять эту цепочку, понятен почти весь проект.
+
+## С чего начать чтение кода
+
+Открывай файлы в таком порядке:
 
 1. `docker-compose.yml`
 2. `backend/app/main.py`
-3. `backend/app/api/routes/predictions.py`
-4. `backend/app/worker.py`
-5. `backend/app/billing.py`
-6. `backend/app/models/`
+3. `backend/app/models.py`
+4. `backend/app/api/auth.py`
+5. `backend/app/api/models.py`
+6. `backend/app/api/predictions.py`
+7. `backend/app/worker.py`
+8. `backend/app/billing.py`
 
-Этого уже хватит, чтобы понять почти все важное.
+Этого хватает, чтобы понять, как сервис работает целиком.
 
-## Главные файлы
+## Главные файлы проекта
 
 `backend/app/main.py`
 
-- собирает FastAPI приложение;
-- подключает middleware;
-- подключает роуты;
-- делает bootstrap при старте.
+- собирает FastAPI-приложение;
+- подключает middleware и все роуты;
+- на старте создаёт loyalty rules и initial admin, если они заданы в env.
 
-`backend/app/api/routes/`
+`backend/app/models.py`
 
-- здесь все HTTP ручки;
-- если хочешь понять, что умеет API, почти всегда нужно начинать отсюда.
+- все таблицы БД в одном месте;
+- лучший файл, чтобы понять, какие сущности вообще есть.
+
+`backend/app/api/*.py`
+
+- здесь лежат все HTTP-ручки;
+- каждый файл отвечает за свой блок: auth, billing, models, predictions, admin, system.
 
 `backend/app/billing.py`
 
-- вся логика кредитов, платежей и транзакций.
-
-`backend/app/ml.py`
-
-- проверка файла модели;
-- загрузка модели;
-- обычный вызов `predict`.
+- логика кредитов, платежей и списаний;
+- здесь самое важное правило проекта: не списывать раньше времени.
 
 `backend/app/worker.py`
 
 - Celery app;
-- фоновая задача prediction;
-- ежемесячный пересчет loyalty;
-- worker metrics на `9091`.
+- фоновая prediction-задача;
+- ежемесячный пересчёт loyalty.
 
-`backend/app/models/`
+`dashboard/main.py`
 
-- таблицы БД.
-
-`backend/app/schemas/`
-
-- что API принимает и что возвращает.
-
-`streamlit_dashboard/main.py`
-
-- вход в админский dashboard.
+- вход в Streamlit dashboard.
 
 ## Как устроена логика очень просто
 
-Есть 4 основные идеи:
+Тут всего несколько понятных частей:
 
-1. API принимает запросы.
-2. БД хранит состояние.
-3. Worker делает тяжелую работу в фоне.
-4. Billing следит, чтобы кредиты списывались только когда prediction реально удался.
+- API принимает запросы.
+- БД хранит состояние.
+- Worker делает тяжёлую работу в фоне.
+- Billing отвечает за деньги.
+- Dashboard показывает статистику.
 
-То есть HTTP-ручка не считает модель сама.
-Она только создает запись и отправляет задачу в очередь.
+Самая важная мысль:
 
-## Как проходит запрос пользователя шаг за шагом
+кредиты не списываются в HTTP-запросе. Они списываются только после успешного результата worker-а.
+
+## Как работает запрос пользователя шаг за шагом
 
 ### Регистрация
 
-1. Пользователь идет в `POST /api/v1/auth/register`.
-2. Backend создает пользователя.
-3. Backend сразу создает для него баланс.
-4. Backend возвращает access и refresh token.
+1. Пользователь вызывает `POST /api/v1/auth/register`.
+2. Backend создаёт пользователя и стартовый баланс.
+3. Backend возвращает `access_token` и `refresh_token`.
 
-### Пополнение баланса
+### Пополнение
 
 1. Пользователь вызывает `POST /api/v1/billing/payments`.
-2. Backend создает запись платежа.
-3. Backend создает credit-транзакцию.
+2. Backend создаёт запись `payment`.
+3. Backend создаёт credit-транзакцию.
 4. Баланс увеличивается.
 
 ### Загрузка модели
 
-1. Пользователь шлет `model.pkl`.
-2. Backend проверяет размер, расширение и что это правда `scikit-learn` модель.
+1. Пользователь отправляет `model.pkl`.
+2. Backend проверяет расширение, размер и валидность `scikit-learn` модели.
 3. Файл сохраняется на диск.
-4. В БД создается запись о модели.
+4. В БД появляется запись о модели.
 
 ### Prediction
 
 1. Пользователь вызывает `POST /api/v1/predictions`.
-2. Backend проверяет, что модель его и что на балансе хватает кредитов.
-3. Backend создает запись `prediction` со стоимостью и скидкой.
-4. Backend отправляет задачу в Celery и сразу отвечает `202`.
+2. Backend проверяет, что модель принадлежит пользователю.
+3. Backend проверяет баланс и фиксирует цену prediction со скидкой.
+4. Backend ставит задачу в Celery и сразу отвечает `202`.
 5. Worker загружает модель и считает результат.
-6. Если prediction успешен, только тогда списываются кредиты.
-7. Если что-то упало, prediction становится `failed`, а лишнего списания нет.
+6. Если всё успешно, worker списывает кредиты.
+7. Если ошибка, prediction становится `failed`, а баланс остаётся прежним.
 
 ## Где что лежит и зачем
 
 ```text
 backend/app/
-  api/routes/      # endpoints
-  models/          # ORM модели
-  schemas/         # Pydantic схемы
-  billing.py       # кредиты и платежи
-  loyalty.py       # уровни и скидки
-  ml.py            # работа с моделью
-  worker.py        # Celery задачи
-  security.py      # JWT и пароль
+  api/             # все HTTP endpoints
+  billing.py       # кредиты, платежи, транзакции
+  config.py        # env-настройки
   db.py            # engine и SessionLocal
-  config.py        # env настройки
-  main.py          # сборка приложения
+  log_config.py    # логирование
+  loyalty.py       # уровни и скидки
+  main.py          # FastAPI приложение
+  metrics.py       # Prometheus metrics
+  middleware.py    # rate limit и API-метрики
+  ml.py            # загрузка модели и prediction
+  models.py        # ORM таблицы
+  schemas.py       # схемы запросов/ответов
+  security.py      # JWT и пароли
+  worker.py        # Celery задачи
 
-streamlit_dashboard/
-  main.py          # запуск dashboard
+dashboard/
+  main.py          # точка входа dashboard
+  api_client.py    # запросы к backend
   views.py         # вкладки панели
 
 infra/
@@ -138,110 +138,71 @@ infra/
   monitoring/      # Prometheus и Grafana
 
 tests/
-  unit/            # маленькие проверки по кускам
-  integration/     # сценарии через API + БД
+  unit/            # быстрые тесты по модулям
+  integration/     # сценарии API + БД + worker
   e2e/             # проверки живого docker-стека
 ```
 
-## С чего начать чтение кода
-
-Если хочешь понять систему, читай так:
-
-1. `backend/app/main.py`
-2. `backend/app/api/routes/auth.py`
-3. `backend/app/api/routes/models.py`
-4. `backend/app/api/routes/predictions.py`
-5. `backend/app/worker.py`
-6. `backend/app/billing.py`
-
-Почему так:
-
-- сначала увидишь, как собирается приложение;
-- потом увидишь вход пользователя;
-- потом загрузку модели;
-- потом главный бизнес-поток;
-- потом асинхронную часть;
-- потом деньги.
-
 ## Как локально что-то поменять и не сломать
 
-Самый безопасный путь:
+Нормальный рабочий порядок такой:
 
-1. Подними стек: `docker compose up -d --build`
-2. Проверь `http://localhost:8000/health`
-3. Меняй один модуль за раз
-4. После каждого заметного шага запускай `make test`
-5. Перед финалом запускай `make smoke` и `make e2e`
+1. Запусти `make smoke`, чтобы понять, что базовый сценарий жив.
+2. Меняй один файл или одну небольшую связку файлов.
+3. Сразу запускай `make test`.
+4. Если трогал Docker, Celery, monitoring или dashboard, потом запускай `make e2e`.
 
-Хорошее правило:
+Полезное правило:
 
-- меняешь роуты — прогоняй `tests/unit/test_*.py` для этого API;
-- меняешь billing — обязательно прогоняй billing и prediction тесты;
-- меняешь worker — обязательно смотри `make e2e` и monitoring.
+- меняешь `billing.py` — проверь billing и prediction тесты;
+- меняешь `auth.py` или `security.py` — проверь auth и admin доступ;
+- меняешь `worker.py` — проверь integration flow;
+- меняешь `docker-compose.yml` или `infra/monitoring` — проверь e2e.
 
 ## Как дебажить
 
-Быстрая последовательность:
+Если что-то не работает, смотри в таком порядке:
 
-1. `docker compose ps`
-2. `http://localhost:8000/health`
-3. `http://localhost:8000/docs`
-4. `docker compose logs backend`
-5. `docker compose logs celery`
-6. `http://localhost:9090/-/healthy`
-7. `http://localhost:3000/api/health`
+1. `GET /health`
+2. `GET /docs`
+3. логи backend
+4. логи celery
+5. `GET /metrics`
+6. Prometheus targets
+7. Grafana health
 
-Если сломался prediction, обычно проверять нужно:
+Если prediction ломается, обычно проблема в одном из мест:
 
-- `backend`
-- `celery`
-- `redis`
-- `postgres`
+- модель невалидна;
+- очередь недоступна;
+- кредиты закончились;
+- worker не может прочитать файл модели;
+- упала БД или Redis.
 
-Если не видны метрики:
-
-- backend metrics: `http://localhost:8000/metrics`
-- worker metrics: `http://localhost:9091/metrics`
-- Prometheus targets
-- Grafana datasource
-
-## Как запускать тесты
-
-Все основные команды:
+## Как запускать тесты и что они проверяют
 
 ```bash
 make test
-make test-unit
 make smoke
 make e2e
 ```
 
-Что они делают:
+Что проверяют тесты:
 
-- `make test` — unit + integration + coverage;
-- `make test-unit` — то же самое по явным папкам;
-- `make smoke` — быстрый локальный сценарий без полного docker-стека;
-- `make e2e` — живой сценарий поверх поднятого compose-стека.
+- auth, JWT и роли;
+- загрузку модели;
+- создание prediction;
+- успешное выполнение worker;
+- списание кредитов только после успеха;
+- rollback при ошибках;
+- loyalty tiers и месячный пересчёт;
+- health, metrics и openapi;
+- живой docker stack и monitoring.
 
-Что тесты проверяют:
+## Самая полезная короткая формула
 
-- auth и JWT;
-- роли;
-- загрузку моделей;
-- prediction flow;
-- billing и транзакции;
-- loyalty;
-- health, metrics и rate limit;
-- monitoring stack.
+Чтобы не теряться, думай так:
 
-## Самая важная мысль про проект
+`API создаёт задачу -> worker считает -> billing списывает только после успеха`
 
-Это не “сложная магия”.
-
-Это довольно прямой пайплайн:
-
-- API принимает команду;
-- БД хранит состояние;
-- Celery считает в фоне;
-- billing делает безопасное начисление и списание;
-- monitoring показывает, что все живо.
+Если держать в голове эту формулу, проект читается очень быстро.

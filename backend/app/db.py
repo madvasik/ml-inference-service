@@ -79,6 +79,25 @@ def schema_is_ready(db: Session) -> bool:
     return ready
 
 
-import backend.app.models.billing  # noqa: F401,E402
-import backend.app.models.ml  # noqa: F401,E402
-import backend.app.models.user  # noqa: F401,E402
+def probe_database_health(session_factory=None) -> tuple[str, str, list[str]]:
+    db_status = "unknown"
+    schema_status = "unknown"
+    missing_tables: list[str] = []
+    db: Session | None = None
+    try:
+        if session_factory is None:
+            session_factory = SessionLocal
+        db = session_factory()
+        database_connection_ok(db)
+        db_status = "ok"
+        _, schema_status, missing_tables = database_schema_status(db)
+    except Exception:
+        db_status = "error"
+        schema_status = "unknown"
+    finally:
+        if db is not None:
+            db.close()
+    return db_status, schema_status, missing_tables
+
+
+import backend.app.models  # noqa: F401,E402

@@ -72,6 +72,7 @@ def _build_env() -> dict[str, str]:
         {
             "DATABASE_URL": f"sqlite:///{SMOKE_DB}",
             "SECRET_KEY": "smoke-secret",
+            "DEBUG": "false",
             "CELERY_TASK_ALWAYS_EAGER": "true",
             "CELERY_BROKER_URL": "memory://",
             "CELERY_RESULT_BACKEND": "cache+memory://",
@@ -200,7 +201,7 @@ def main() -> int:
                 "-m",
                 "streamlit",
                 "run",
-                "streamlit_dashboard/main.py",
+                "dashboard/main.py",
                 "--server.headless=true",
                 "--server.port=18501",
                 "--server.address=127.0.0.1",
