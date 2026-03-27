@@ -8,46 +8,53 @@ from sqlalchemy.orm import sessionmaker
 from sklearn.ensemble import RandomForestClassifier
 import numpy as np
 
-from backend.app.database.base import Base
-from backend.app.database.session import get_db
+from backend.app.db.base import Base
+from backend.app.db.session import get_db
 from backend.app.main import app
 from backend.app import main as main_module
-from backend.app.models.user import User, UserRole
-from backend.app.models.balance import Balance
-from backend.app.models.ml_model import MLModel
+from backend.app.db import session as db_session_module
+from backend.app.workers import loyalty_tasks as loyalty_tasks_module
+from backend.app.workers import prediction_tasks as prediction_tasks_module
+from backend.app.domain.models.user import User, UserRole
+from backend.app.domain.models.balance import Balance
+from backend.app.domain.models.ml_model import MLModel
 from backend.app.auth.security import get_password_hash
 
-
-# Тестовая база данных
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+@pytest.fixture(scope="function")
+def testing_session_factory(tmp_path):
+    """Изолированная SQLite-сессия на каждый тест."""
+    database_path = tmp_path / "test.sqlite"
+    engine = create_engine(
+        f"sqlite:///{database_path}",
+        connect_args={"check_same_thread": False},
+    )
+    testing_session_local = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+    try:
+        yield testing_session_local
+    finally:
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
 
 
 @pytest.fixture(autouse=True)
-def override_main_session_local():
-    """Подменяет SessionLocal в main.py на тестовую SQLite-сессию."""
-    original_session_local = main_module.SessionLocal
-    main_module.SessionLocal = TestingSessionLocal
-    try:
-        yield
-    finally:
-        main_module.SessionLocal = original_session_local
+def override_session_locals(monkeypatch, testing_session_factory):
+    """Подменяет SessionLocal во всех runtime-модулях на временную SQLite-сессию."""
+    monkeypatch.setattr(main_module, "SessionLocal", testing_session_factory)
+    monkeypatch.setattr(db_session_module, "SessionLocal", testing_session_factory)
+    monkeypatch.setattr(prediction_tasks_module, "SessionLocal", testing_session_factory)
+    monkeypatch.setattr(loyalty_tasks_module, "SessionLocal", testing_session_factory)
+    yield
 
 
 @pytest.fixture(scope="function")
-def db_session():
+def db_session(testing_session_factory):
     """Создание тестовой сессии БД"""
-    Base.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
+    db = testing_session_factory()
     try:
         yield db
     finally:
         db.close()
-        Base.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture(scope="function")

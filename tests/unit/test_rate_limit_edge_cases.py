@@ -20,7 +20,7 @@ def test_rate_limit_exception_handling(client):
 
 def test_rate_limit_cleanup_mechanism():
     """Тест механизма очистки старых записей rate limit"""
-    from backend.app.middleware.rate_limit import RateLimitMiddleware
+    from backend.app.observability.middleware.rate_limit import RateLimitMiddleware
     from unittest.mock import Mock
     
     middleware = RateLimitMiddleware(Mock())
@@ -66,7 +66,7 @@ def test_rate_limit_ip_fallback(client):
 
 def test_rate_limit_blocked_response(client):
     """Тест ответа при блокировке запроса"""
-    from backend.app.middleware.rate_limit import RateLimitMiddleware
+    from backend.app.observability.middleware.rate_limit import RateLimitMiddleware
     from unittest.mock import Mock, AsyncMock
     
     middleware = RateLimitMiddleware(Mock())

@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from prometheus_client import REGISTRY
 from backend.app.main import app
-from backend.app.monitoring.metrics import (
+from backend.app.observability.metrics import (
     prediction_requests_total,
     prediction_latency_seconds,
     billing_transactions_total,
@@ -62,7 +62,7 @@ def test_prediction_metrics_registered():
 def test_billing_metrics_increment(client, db_session, test_user):
     """Тест инкремента метрик биллинга"""
     from backend.app.billing.service import add_credits
-    from backend.app.models.balance import Balance
+    from backend.app.domain.models.balance import Balance
     
     # Получаем начальное значение метрики для типа "credit"
     samples = billing_transactions_total.collect()[0].samples

@@ -3,7 +3,7 @@ import logging
 import json
 import sys
 from io import StringIO
-from backend.app.logging_config import setup_logging, JSONFormatter
+from backend.app.core.logging import setup_logging, JSONFormatter
 
 
 def test_json_formatter_basic():

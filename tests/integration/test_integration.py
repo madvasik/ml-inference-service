@@ -27,16 +27,16 @@ def test_full_workflow(client, test_model_file):
     model_id = model_response.json()["id"]
     
     # 3. Пополнение баланса
-    topup_response = client.post(
-        "/api/v1/billing/topup",
+    payment_response = client.post(
+        "/api/v1/billing/payments",
         headers={"Authorization": f"Bearer {token}"},
         json={"amount": 100}
     )
-    assert topup_response.status_code == status.HTTP_200_OK
+    assert payment_response.status_code == status.HTTP_200_OK
     
     # 4. Создание предсказания
     from unittest.mock import patch
-    with patch('backend.app.api.v1.predictions.execute_prediction.delay') as mock_celery:
+    with patch('backend.app.api.routes.predictions.execute_prediction.delay') as mock_celery:
         mock_task = type('MockTask', (), {'id': 'test-task-id'})()
         mock_celery.return_value = mock_task
         

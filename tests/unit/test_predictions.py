@@ -1,11 +1,11 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from fastapi import status
-from backend.app.models.prediction import Prediction, PredictionStatus
-from backend.app.models.user import LoyaltyTier
+from backend.app.domain.models.prediction import Prediction, PredictionStatus
+from backend.app.domain.models.user import LoyaltyTier
 
 
-@patch('backend.app.api.v1.predictions.execute_prediction.delay')
+@patch('backend.app.api.routes.predictions.execute_prediction.delay')
 def test_create_prediction(mock_celery_delay, client, test_user, test_ml_model):
     """Тест создания предсказания"""
     # Мокируем Celery задачу
@@ -40,7 +40,7 @@ def test_create_prediction(mock_celery_delay, client, test_user, test_ml_model):
 
 def test_create_prediction_insufficient_balance(client, test_user, test_ml_model, db_session):
     """Тест создания предсказания с недостаточным балансом"""
-    from backend.app.models.balance import Balance
+    from backend.app.domain.models.balance import Balance
     # Устанавливаем нулевой баланс
     balance = db_session.query(Balance).filter_by(user_id=test_user.id).first()
     if balance:
@@ -88,7 +88,7 @@ def test_list_predictions(client, test_user):
     assert "total" in data
 
 
-@patch('backend.app.api.v1.predictions.execute_prediction.delay')
+@patch('backend.app.api.routes.predictions.execute_prediction.delay')
 def test_create_prediction_snapshots_loyalty_discount(mock_celery_delay, client, test_user, test_ml_model, db_session):
     mock_task = MagicMock()
     mock_task.id = "discount-task-id"
@@ -121,7 +121,7 @@ def test_create_prediction_snapshots_loyalty_discount(mock_celery_delay, client,
     assert prediction.task_id == "discount-task-id"
 
 
-@patch('backend.app.api.v1.predictions.execute_prediction.delay')
+@patch('backend.app.api.routes.predictions.execute_prediction.delay')
 def test_create_prediction_queue_failure_marks_prediction_failed(mock_celery_delay, client, test_user, test_ml_model, db_session):
     mock_celery_delay.side_effect = RuntimeError("broker down")
 

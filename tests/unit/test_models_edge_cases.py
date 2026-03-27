@@ -69,7 +69,7 @@ def test_upload_model_no_filename(client, test_user):
 def test_upload_model_file_too_large(client, test_user, monkeypatch):
     """Тест загрузки модели с превышением размера файла"""
     from backend.app.auth.jwt import create_access_token
-    from backend.app.config import settings
+    from backend.app.core.config import settings
     
     token = create_access_token({"sub": str(test_user.id), "type": "access"})
     
@@ -172,7 +172,7 @@ def test_upload_model_invalid_file(client, test_user):
 def test_upload_model_sanitizes_user_supplied_filename(client, test_user, test_model_file):
     """Тест, что имя файла пользователя не может вывести запись за пределы директории пользователя."""
     from backend.app.auth.jwt import create_access_token
-    from backend.app.config import settings
+    from backend.app.core.config import settings
 
     token = create_access_token({"sub": str(test_user.id), "type": "access"})
     escaped_path = os.path.join(settings.ml_models_dir, "escape.pkl")
@@ -196,7 +196,6 @@ def test_upload_model_sanitizes_user_supplied_filename(client, test_user, test_m
 def test_upload_model_server_error(client, test_user, test_model_file, monkeypatch):
     """Тест обработки серверной ошибки при загрузке модели"""
     from backend.app.auth.jwt import create_access_token
-    from backend.app.api.v1 import models
     
     token = create_access_token({"sub": str(test_user.id), "type": "access"})
     

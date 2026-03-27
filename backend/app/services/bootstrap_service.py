@@ -2,8 +2,8 @@ from sqlalchemy.orm import Session
 
 from backend.app.auth.security import get_password_hash
 from backend.app.billing.service import add_credits, ensure_balance
-from backend.app.config import settings
-from backend.app.models.user import LoyaltyTier, User, UserRole
+from backend.app.core.config import settings
+from backend.app.domain.models.user import LoyaltyTier, User, UserRole
 
 
 def ensure_initial_admin(db: Session) -> User | None:

@@ -3,11 +3,11 @@ from typing import Tuple
 
 from sqlalchemy.orm import Session
 
-from backend.app.models.balance import Balance
-from backend.app.models.payment import Payment
-from backend.app.models.prediction import Prediction
-from backend.app.models.transaction import Transaction, TransactionType
-from backend.app.monitoring.metrics import billing_transactions_total
+from backend.app.domain.models.balance import Balance
+from backend.app.domain.models.payment import Payment
+from backend.app.domain.models.prediction import Prediction
+from backend.app.domain.models.transaction import Transaction, TransactionType
+from backend.app.observability.metrics import billing_transactions_total
 
 
 def ensure_balance(db: Session, user_id: int) -> Tuple[Balance, bool]:
@@ -82,7 +82,7 @@ def charge_prediction(
 
 
 def deduct_credits(db: Session, user_id: int, amount: int, description: str | None = None) -> bool:
-    """Совместимый helper для точечного списания кредитов с commit."""
+    """Точечное списание кредитов с commit."""
     balance = db.query(Balance).filter(Balance.user_id == user_id).with_for_update().first()
     if not balance:
         balance = Balance(user_id=user_id, credits=0)

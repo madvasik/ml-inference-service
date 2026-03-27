@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from backend.app.main import app
-from backend.app.exceptions import (
+from backend.app.core.exceptions import (
     MLServiceException,
     ModelNotFoundError,
     InsufficientCreditsError,
@@ -63,6 +63,7 @@ def test_health_endpoint(client_no_db):
     data = response.json()
     assert data["status"] == "healthy"
     assert data["components"]["database"] == "ok"
+    assert data["components"]["schema"] == "ok"
 
 
 def test_health_endpoint_returns_503_when_database_is_unavailable(client_no_db, monkeypatch):
@@ -80,6 +81,26 @@ def test_health_endpoint_returns_503_when_database_is_unavailable(client_no_db, 
     data = response.json()
     assert data["status"] == "unhealthy"
     assert data["components"]["database"] == "error"
+    assert data["components"]["schema"] == "unknown"
+
+
+def test_health_endpoint_returns_503_when_schema_is_missing(client_no_db, monkeypatch):
+    """Тест health endpoint при доступной БД, но неинициализированной схеме."""
+    from backend.app import main as main_module
+
+    def fake_schema_status(_db):
+        return False, "missing_tables", ["users", "payments"]
+
+    monkeypatch.setattr(main_module, "database_schema_status", fake_schema_status)
+
+    response = client_no_db.get("/health")
+
+    assert response.status_code == 503
+    data = response.json()
+    assert data["status"] == "unhealthy"
+    assert data["components"]["database"] == "ok"
+    assert data["components"]["schema"] == "missing_tables"
+    assert data["details"]["missing_tables"] == ["users", "payments"]
 
 
 def test_metrics_endpoint(client_no_db):

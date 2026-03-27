@@ -21,9 +21,9 @@ def test_get_prediction_not_found(client, test_user):
 def test_get_prediction_other_user(client, test_user, db_session):
     """Тест получения предсказания другого пользователя"""
     from backend.app.auth.jwt import create_access_token
-    from backend.app.models.user import User, UserRole
-    from backend.app.models.prediction import Prediction, PredictionStatus
-    from backend.app.models.ml_model import MLModel
+    from backend.app.domain.models.user import User, UserRole
+    from backend.app.domain.models.prediction import Prediction, PredictionStatus
+    from backend.app.domain.models.ml_model import MLModel
     from backend.app.auth.security import get_password_hash
     
     # Создаем другого пользователя

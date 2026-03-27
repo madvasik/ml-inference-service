@@ -3,7 +3,7 @@ import pytest_asyncio
 from fastapi import HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
 from backend.app.api.deps import get_current_user, get_current_admin
-from backend.app.models.user import User, UserRole
+from backend.app.domain.models.user import User, UserRole
 from backend.app.auth.jwt import create_access_token, create_refresh_token
 
 

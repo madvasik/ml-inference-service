@@ -2,8 +2,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from backend.app.models.prediction import Prediction, PredictionStatus
-from backend.app.tasks.prediction_tasks import DatabaseTask, execute_prediction
+from backend.app.domain.models.prediction import Prediction, PredictionStatus
+from backend.app.workers.prediction_tasks import DatabaseTask, execute_prediction
 
 
 @pytest.fixture
@@ -25,9 +25,9 @@ def mock_prediction(db_session, test_user, test_ml_model):
     return prediction
 
 
-@patch("backend.app.tasks.prediction_tasks.load_model")
-@patch("backend.app.tasks.prediction_tasks.predict")
-@patch("backend.app.tasks.prediction_tasks.charge_prediction")
+@patch("backend.app.workers.prediction_tasks.load_model")
+@patch("backend.app.workers.prediction_tasks.predict")
+@patch("backend.app.workers.prediction_tasks.charge_prediction")
 def test_execute_prediction_success_integration(
     mock_charge_prediction,
     mock_predict,
@@ -52,7 +52,7 @@ def test_execute_prediction_success_integration(
     assert mock_prediction.completed_at is not None
 
 
-@patch("backend.app.tasks.prediction_tasks.load_model")
+@patch("backend.app.workers.prediction_tasks.load_model")
 def test_execute_prediction_not_found(mock_load_model, db_session):
     task = execute_prediction
     task._db = db_session
@@ -64,7 +64,7 @@ def test_execute_prediction_not_found(mock_load_model, db_session):
     mock_load_model.assert_not_called()
 
 
-@patch("backend.app.tasks.prediction_tasks.load_model")
+@patch("backend.app.workers.prediction_tasks.load_model")
 def test_execute_prediction_model_not_found_integration(mock_load_model, db_session, mock_prediction):
     mock_prediction.model_id = 99999
     db_session.commit()
@@ -81,9 +81,9 @@ def test_execute_prediction_model_not_found_integration(mock_load_model, db_sess
     mock_load_model.assert_not_called()
 
 
-@patch("backend.app.tasks.prediction_tasks.load_model")
-@patch("backend.app.tasks.prediction_tasks.predict")
-@patch("backend.app.tasks.prediction_tasks.charge_prediction")
+@patch("backend.app.workers.prediction_tasks.load_model")
+@patch("backend.app.workers.prediction_tasks.predict")
+@patch("backend.app.workers.prediction_tasks.charge_prediction")
 def test_execute_prediction_insufficient_credits_integration(
     mock_charge_prediction,
     mock_predict,
@@ -106,9 +106,9 @@ def test_execute_prediction_insufficient_credits_integration(
     assert mock_prediction.failure_reason == "insufficient_credits"
 
 
-@patch("backend.app.tasks.prediction_tasks.load_model")
-@patch("backend.app.tasks.prediction_tasks.predict")
-@patch("backend.app.tasks.prediction_tasks.charge_prediction")
+@patch("backend.app.workers.prediction_tasks.load_model")
+@patch("backend.app.workers.prediction_tasks.predict")
+@patch("backend.app.workers.prediction_tasks.charge_prediction")
 def test_execute_prediction_load_model_error(
     mock_charge_prediction,
     mock_predict,
@@ -136,9 +136,9 @@ def test_execute_prediction_load_model_error(
     mock_predict.assert_not_called()
 
 
-@patch("backend.app.tasks.prediction_tasks.load_model")
-@patch("backend.app.tasks.prediction_tasks.predict")
-@patch("backend.app.tasks.prediction_tasks.charge_prediction")
+@patch("backend.app.workers.prediction_tasks.load_model")
+@patch("backend.app.workers.prediction_tasks.predict")
+@patch("backend.app.workers.prediction_tasks.charge_prediction")
 def test_execute_prediction_predict_error(
     mock_charge_prediction,
     mock_predict,

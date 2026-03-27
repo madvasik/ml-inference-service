@@ -1,12 +1,12 @@
 import pytest
-from backend.app.database.base import Base
-from backend.app.database.session import get_db, SessionLocal
+from backend.app.db.base import Base
+from backend.app.db import session as session_module
 
 
 def test_get_db_yields_session():
     """Тест получения DB сессии через dependency"""
     # Используем генератор напрямую
-    db_gen = get_db()
+    db_gen = session_module.get_db()
     
     try:
         db = next(db_gen)
@@ -24,7 +24,7 @@ def test_get_db_yields_session():
 
 def test_get_db_closes_session():
     """Тест закрытия DB сессии после использования"""
-    db_gen = get_db()
+    db_gen = session_module.get_db()
     
     try:
         db = next(db_gen)
@@ -45,8 +45,8 @@ def test_get_db_closes_session():
 
 def test_session_local_creates_sessions():
     """Тест создания сессий через SessionLocal"""
-    session1 = SessionLocal()
-    session2 = SessionLocal()
+    session1 = session_module.SessionLocal()
+    session2 = session_module.SessionLocal()
     
     # Сессии должны быть разными объектами
     assert session1 is not session2

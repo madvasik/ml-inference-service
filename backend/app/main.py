@@ -1,30 +1,33 @@
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
+import logging
+
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
-from starlette.responses import Response
-import logging
-from datetime import datetime, timedelta, timezone
+from sqlalchemy import func
 from sqlalchemy.orm import Session
-from sqlalchemy import func, text
-from backend.app.api.v1 import auth, users, models, predictions, billing, admin, metrics
-from backend.app.config import settings
-from backend.app.middleware.metrics_middleware import MetricsMiddleware
-from backend.app.middleware.rate_limit import RateLimitMiddleware
-from backend.app.database.session import SessionLocal
-from backend.app.models.prediction import Prediction
-from backend.app.services.bootstrap_service import ensure_initial_admin
-from backend.app.services.loyalty_service import ensure_default_loyalty_rules, refresh_loyalty_metrics
-from backend.app.monitoring.metrics import active_users
-from backend.app.exceptions import (
-    MLServiceException,
-    ModelNotFoundError,
+from starlette.responses import Response
+
+from backend.app.api.routes import admin, auth, billing, metrics, models, predictions, users
+from backend.app.core.config import settings
+from backend.app.core.exceptions import (
     InsufficientCreditsError,
     InvalidModelError,
-    PredictionError
+    MLServiceException,
+    ModelNotFoundError,
+    PredictionError,
 )
-from backend.app.logging_config import setup_logging
+from backend.app.core.logging import setup_logging
+from backend.app.db.readiness import database_schema_status
+from backend.app.db.session import SessionLocal, database_connection_ok
+from backend.app.domain.models.prediction import Prediction
+from backend.app.observability.metrics import active_users
+from backend.app.observability.middleware.metrics_middleware import MetricsMiddleware
+from backend.app.observability.middleware.rate_limit import RateLimitMiddleware
+from backend.app.services.bootstrap_service import ensure_initial_admin
+from backend.app.services.loyalty_service import ensure_default_loyalty_rules, refresh_loyalty_metrics
 
 # Настройка логирования
 setup_logging(debug=settings.debug, json_format=settings.log_json_format)
@@ -35,18 +38,30 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Инициализация данных приложения при старте."""
+    db: Session | None = None
     try:
-        db: Session = SessionLocal()
-        try:
+        db = SessionLocal()
+        database_connection_ok(db)
+        schema_ready, schema_status, missing_tables = database_schema_status(db)
+        if not schema_ready:
+            if schema_status == "missing_tables":
+                logger.warning(
+                    "Startup bootstrap skipped: database schema is not initialized. Missing tables: %s",
+                    ", ".join(missing_tables),
+                )
+            else:
+                logger.warning("Startup bootstrap skipped: schema probe failed (%s)", schema_status)
+        else:
             ensure_default_loyalty_rules(db)
             admin_user = ensure_initial_admin(db)
             refresh_loyalty_metrics(db)
             if admin_user:
                 logger.info("Initial admin ensured: %s", admin_user.email)
-        finally:
-            db.close()
     except Exception as exc:
         logger.warning("Startup bootstrap failed: %s", exc)
+    finally:
+        if db is not None:
+            db.close()
     yield
 
 
@@ -92,29 +107,39 @@ def root():
 @app.get("/health")
 def health_check():
     db_status = "unknown"
+    schema_status = "unknown"
+    missing_tables: list[str] = []
+    schema_ready = False
 
     try:
         db: Session = SessionLocal()
         try:
-            db.execute(text("SELECT 1"))
+            database_connection_ok(db)
             db_status = "ok"
+            schema_ready, schema_status, missing_tables = database_schema_status(db)
         finally:
             db.close()
     except Exception as exc:
         db_status = "error"
+        schema_status = "unknown"
         logger.warning("Health check database probe failed: %s", exc)
 
-    overall_status = "healthy" if db_status == "ok" else "unhealthy"
+    overall_status = "healthy" if db_status == "ok" and schema_ready else "unhealthy"
     status_code = status.HTTP_200_OK if overall_status == "healthy" else status.HTTP_503_SERVICE_UNAVAILABLE
+    content = {
+        "status": overall_status,
+        "components": {
+            "api": "ok",
+            "database": db_status,
+            "schema": schema_status,
+        },
+    }
+    if missing_tables:
+        content["details"] = {"missing_tables": missing_tables}
+
     return JSONResponse(
         status_code=status_code,
-        content={
-            "status": overall_status,
-            "components": {
-                "api": "ok",
-                "database": db_status,
-            },
-        },
+        content=content,
     )
 
 

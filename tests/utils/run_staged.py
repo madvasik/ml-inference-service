@@ -90,7 +90,7 @@ def print_info(text):
 
 
 def run_stage(stage_name, marker, description, additional_args=None, md_file=None):
-    # md_file используется для совместимости, но теперь это log_file
+    # md_file здесь означает путь до текстового лога запуска
     """Запуск этапа тестирования с сохранением результатов"""
     global _md_file_handle
     
@@ -144,7 +144,7 @@ def run_stage(stage_name, marker, description, additional_args=None, md_file=Non
             ' - httpx - INFO -',
             ' - httpx - DEBUG -',
             ' - backend.app.main - WARNING - Failed to update active_users metric',
-            ' - backend.app.tasks.prediction_tasks - ERROR -',  # Ожидаемые ошибки в тестах
+            ' - backend.app.workers.prediction_tasks - ERROR -',  # Ожидаемые ошибки в тестах
             'could not translate host name "postgres"',  # Ожидаемая ошибка подключения к PostgreSQL в тестах
             'Traceback (most recent call last):',  # Traceback от ожидаемых исключений в тестах
             'ExceptionGroup:',  # ExceptionGroup от ожидаемых исключений
@@ -256,7 +256,7 @@ def run_stage(stage_name, marker, description, additional_args=None, md_file=Non
 
 
 def run_e2e_scenarios(md_file=None):
-    # md_file используется для совместимости, но теперь это log_file
+    # md_file здесь означает путь до текстового лога запуска
     """Запуск E2E сценариев (отдельный скрипт) с сохранением результатов"""
     global _md_file_handle
     

@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
-from backend.app.models.prediction import Prediction, PredictionStatus
-from backend.app.models.user import LoyaltyTier
+from backend.app.domain.models.prediction import Prediction, PredictionStatus
+from backend.app.domain.models.user import LoyaltyTier
 from backend.app.services.loyalty_service import ensure_default_loyalty_rules, recalculate_loyalty_tiers
 
 

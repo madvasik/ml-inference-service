@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from backend.app.main import app
-from backend.app.exceptions import (
+from backend.app.core.exceptions import (
     ModelNotFoundError,
     InsufficientCreditsError,
     InvalidModelError,
@@ -53,7 +53,7 @@ def test_prediction_error_exception_handler():
 
 def test_general_exception_handler_debug_mode(client_no_db, monkeypatch):
     """Тест общего обработчика исключений в debug режиме"""
-    from backend.app.config import settings
+    from backend.app.core.config import settings
     
     original_debug = settings.debug
     monkeypatch.setattr(settings, "debug", True)
@@ -67,7 +67,7 @@ def test_general_exception_handler_debug_mode(client_no_db, monkeypatch):
 
 def test_general_exception_handler_production_mode(client_no_db, monkeypatch):
     """Тест общего обработчика исключений в production режиме"""
-    from backend.app.config import settings
+    from backend.app.core.config import settings
     
     original_debug = settings.debug
     monkeypatch.setattr(settings, "debug", False)

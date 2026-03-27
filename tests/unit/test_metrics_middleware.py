@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 from fastapi import Request
 from fastapi.testclient import TestClient
 from backend.app.main import app
-from backend.app.monitoring.metrics import prediction_requests_total, prediction_latency_seconds
+from backend.app.observability.metrics import prediction_requests_total, prediction_latency_seconds
 
 # Используем фикстуру client из conftest.py, которая правильно настраивает БД
 # Не нужно определять свой client здесь
@@ -35,7 +35,7 @@ def test_metrics_middleware_tracks_prediction_request(client, test_user, test_ml
     )
     
     # Мокируем Celery
-    with patch('backend.app.api.v1.predictions.execute_prediction.delay') as mock_celery:
+    with patch('backend.app.api.routes.predictions.execute_prediction.delay') as mock_celery:
         mock_task = Mock()
         mock_task.id = "test-task-id"
         mock_celery.return_value = mock_task
@@ -72,7 +72,7 @@ def test_metrics_middleware_tracks_prediction_latency(client, test_user, test_ml
     initial_count = len(samples_before)
     
     # Мокируем Celery
-    with patch('backend.app.api.v1.predictions.execute_prediction.delay') as mock_celery:
+    with patch('backend.app.api.routes.predictions.execute_prediction.delay') as mock_celery:
         mock_task = Mock()
         mock_task.id = "test-task-id"
         mock_celery.return_value = mock_task
@@ -100,7 +100,7 @@ def test_metrics_middleware_handles_exception(client, test_user, test_ml_model):
     token = create_access_token({"sub": str(test_user.id), "type": "access"})
     
     # Мокируем Celery чтобы вызвать ошибку
-    with patch('backend.app.api.v1.predictions.execute_prediction.delay') as mock_celery:
+    with patch('backend.app.api.routes.predictions.execute_prediction.delay') as mock_celery:
         mock_celery.side_effect = Exception("Test error")
         
         # Получаем начальное значение метрики ошибок
@@ -138,7 +138,7 @@ def test_metrics_middleware_handles_exception(client, test_user, test_ml_model):
 
 def test_metrics_middleware_uses_model_id_from_state():
     """Тест использования model_id из request.state"""
-    from backend.app.middleware.metrics_middleware import MetricsMiddleware
+    from backend.app.observability.middleware.metrics_middleware import MetricsMiddleware
     from unittest.mock import AsyncMock, Mock
     
     middleware = MetricsMiddleware(Mock())

@@ -1,8 +1,8 @@
 import pickle
-import os
+from pathlib import Path
 from typing import Optional
+
 from sklearn.base import BaseEstimator
-from backend.app.config import settings
 
 
 def validate_model_file(file_path: str) -> bool:
@@ -19,11 +19,13 @@ def validate_model_file(file_path: str) -> bool:
 
 def load_model(file_path: str) -> Optional[BaseEstimator]:
     """Загрузка модели из файла"""
-    if not os.path.exists(file_path):
+    model_path = Path(file_path)
+
+    if not model_path.exists():
         raise FileNotFoundError(f"Model file not found: {file_path}")
-    
+
     try:
-        with open(file_path, 'rb') as f:
+        with open(model_path, 'rb') as f:
             model = pickle.load(f)
             if not isinstance(model, BaseEstimator):
                 raise ValueError("File does not contain a valid scikit-learn model")
@@ -34,8 +36,9 @@ def load_model(file_path: str) -> Optional[BaseEstimator]:
 
 def save_model(model: BaseEstimator, file_path: str) -> None:
     """Сохранение модели в файл"""
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-    with open(file_path, 'wb') as f:
+    path = Path(file_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, 'wb') as f:
         pickle.dump(model, f)
 
 

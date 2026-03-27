@@ -1,8 +1,8 @@
 import pytest
 from fastapi import status
-from backend.app.models.user import User, UserRole
-from backend.app.models.prediction import Prediction, PredictionStatus
-from backend.app.models.ml_model import MLModel
+from backend.app.domain.models.user import User, UserRole
+from backend.app.domain.models.prediction import Prediction, PredictionStatus
+from backend.app.domain.models.ml_model import MLModel
 
 
 @pytest.fixture
@@ -165,7 +165,7 @@ def test_list_predictions_filtered_by_user_id(client, admin_user, test_user, ano
 def test_list_predictions_filtered_by_model_id(client, admin_user, test_user, test_ml_model, db_session):
     """Тест фильтрации предсказаний по model_id"""
     # Создаем другую модель
-    from backend.app.models.ml_model import MLModel
+    from backend.app.domain.models.ml_model import MLModel
     model2 = MLModel(
         owner_id=test_user.id,
         model_name="model2",

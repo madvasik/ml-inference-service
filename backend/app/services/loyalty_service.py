@@ -4,10 +4,10 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from backend.app.models.loyalty_tier_rule import LoyaltyTierRule
-from backend.app.models.prediction import Prediction, PredictionStatus
-from backend.app.models.user import LoyaltyTier, User
-from backend.app.monitoring.metrics import loyalty_users_total
+from backend.app.domain.models.loyalty_tier_rule import LoyaltyTierRule
+from backend.app.domain.models.prediction import Prediction, PredictionStatus
+from backend.app.domain.models.user import LoyaltyTier, User
+from backend.app.observability.metrics import loyalty_users_total
 
 
 DEFAULT_TIER_RULES = (
