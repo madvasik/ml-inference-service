@@ -1,0 +1,272 @@
+#!/bin/bash
+# Скрипт для инициализации тестовых данных через API эндпоинты
+
+BASE_URL="${BASE_URL:-http://localhost:8000}"
+
+echo "🚀 Начало инициализации данных через API..."
+echo "🌐 API URL: $BASE_URL"
+echo "============================================================"
+
+# Проверка доступности API
+if ! curl -s -f "$BASE_URL/health" > /dev/null; then
+    echo "❌ API недоступен"
+    echo "   Убедитесь, что сервис запущен: docker-compose up -d"
+    exit 1
+fi
+
+echo "✅ API доступен"
+
+# Функция для регистрации пользователя
+register_user() {
+    local email=$1
+    local password=$2
+    local response=$(curl -s -X POST "$BASE_URL/api/v1/auth/register" \
+        -H "Content-Type: application/json" \
+        -d "{\"email\":\"$email\",\"password\":\"$password\"}" \
+        -w "\nHTTP_CODE:%{http_code}")
+    local http_code=$(echo "$response" | grep -o "HTTP_CODE:[0-9]*" | cut -d: -f2)
+    
+    if [ "$http_code" = "201" ]; then
+        echo "$response" | grep -o '"access_token":"[^"]*' | cut -d'"' -f4
+    elif [ "$http_code" = "400" ]; then
+        # Пробуем войти, если пользователь уже существует
+        login "$email" "$password"
+    else
+        echo ""
+    fi
+}
+
+# Функция для входа
+login() {
+    local email=$1
+    local password=$2
+    curl -s -X POST "$BASE_URL/api/v1/auth/login" \
+        -H "Content-Type: application/json" \
+        -d "{\"email\":\"$email\",\"password\":\"$password\"}" | \
+        grep -o '"access_token":"[^"]*' | cut -d'"' -f4
+}
+
+# Функция для пополнения баланса
+topup_balance() {
+    local token=$1
+    local amount=$2
+    curl -s -X POST "$BASE_URL/api/v1/billing/topup" \
+        -H "Authorization: Bearer $token" \
+        -H "Content-Type: application/json" \
+        -d "{\"amount\":$amount}" \
+        -w "\nHTTP_CODE:%{http_code}"
+}
+
+# Функция для загрузки модели
+upload_model() {
+    local token=$1
+    local model_file=$2
+    local model_name=$3
+    curl -s -X POST "$BASE_URL/api/v1/models/upload" \
+        -H "Authorization: Bearer $token" \
+        -F "file=@$model_file" \
+        -F "model_name=$model_name" \
+        -w "\nHTTP_CODE:%{http_code}"
+}
+
+# Функция для создания предсказания
+create_prediction() {
+    local token=$1
+    local model_id=$2
+    local feature1=$3
+    local feature2=$4
+    curl -s -X POST "$BASE_URL/api/v1/predictions" \
+        -H "Authorization: Bearer $token" \
+        -H "Content-Type: application/json" \
+        -d "{\"model_id\":$model_id,\"input_data\":{\"feature1\":$feature1,\"feature2\":$feature2}}" \
+        -w "\nHTTP_CODE:%{http_code}"
+}
+
+# Создание администратора (напрямую в БД, так как нет API)
+echo ""
+echo "👤 Создание администратора..."
+python3 << 'PYEOF'
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from sqlalchemy.orm import Session
+from backend.app.database.session import SessionLocal
+from backend.app.models.user import User, UserRole
+from backend.app.models.balance import Balance
+from backend.app.auth.security import get_password_hash
+
+db: Session = SessionLocal()
+try:
+    admin = db.query(User).filter(User.email == "admin@mlservice.com").first()
+    if admin:
+        print(f"   ℹ️  Администратор уже существует: {admin.email} (ID: {admin.id})")
+    else:
+        admin = User(
+            email="admin@mlservice.com",
+            password_hash=get_password_hash("admin123"),
+            role=UserRole.ADMIN
+        )
+        db.add(admin)
+        db.flush()
+        admin_balance = Balance(user_id=admin.id, credits=10000)
+        db.add(admin_balance)
+        db.commit()
+        db.refresh(admin)
+        print(f"   ✅ Администратор создан: {admin.email} (ID: {admin.id})")
+        print(f"   💰 Баланс: {admin_balance.credits} кредитов")
+finally:
+    db.close()
+PYEOF
+
+# Создание тестовой модели
+echo ""
+echo "🤖 Создание тестовой ML модели..."
+MODEL_FILE=$(python3 << 'PYEOF'
+import pickle
+import tempfile
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+
+X = np.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])
+y = np.array([0, 1, 0, 1, 0])
+model = RandomForestClassifier(n_estimators=10, random_state=42)
+model.fit(X, y)
+
+temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pkl')
+pickle.dump(model, temp_file)
+temp_file.close()
+print(temp_file.name)
+PYEOF
+)
+
+# Создание пользователей через API
+echo ""
+echo "👥 Создание обычных пользователей через API..."
+USERS=(
+    "user1@example.com:user123:500"
+    "user2@example.com:user123:1000"
+    "user3@example.com:user123:750"
+    "user4@example.com:user123:1500"
+    "user5@example.com:user123:2000"
+)
+
+# Сохраняем токены и модели во временные файлы
+TOKENS_FILE=$(mktemp)
+MODELS_FILE=$(mktemp)
+
+user_count=0
+model_count=0
+
+for user_data in "${USERS[@]}"; do
+    email=$(echo "$user_data" | cut -d: -f1)
+    password=$(echo "$user_data" | cut -d: -f2)
+    credits=$(echo "$user_data" | cut -d: -f3)
+    
+    echo ""
+    echo "   Пользователь: $email"
+    
+    # Регистрация
+    token=$(register_user "$email" "$password")
+    if [ -z "$token" ]; then
+        echo "   ❌ Не удалось зарегистрировать/войти"
+        continue
+    fi
+    
+    echo "$email:$token" >> "$TOKENS_FILE"
+    user_count=$((user_count + 1))
+    echo "   ✅ Пользователь зарегистрирован/вошел"
+    
+    # Пополнение баланса
+    topup_result=$(topup_balance "$token" "$credits")
+    http_code=$(echo "$topup_result" | grep -o "HTTP_CODE:[0-9]*" | cut -d: -f2)
+    if [ "$http_code" = "200" ]; then
+        balance=$(echo "$topup_result" | sed 's/HTTP_CODE:[0-9]*$//' | python3 -c "import sys, json; print(json.load(sys.stdin).get('credits', 0))" 2>/dev/null)
+        echo "   💰 Баланс пополнен: $balance кредитов"
+    else
+        echo "   ⚠️  Ошибка пополнения баланса (HTTP $http_code)"
+    fi
+    
+    # Загрузка модели
+    user_num=$(echo "$email" | grep -o '[0-9]')
+    model_name="Model_$user_num"
+    upload_result=$(upload_model "$token" "$MODEL_FILE" "$model_name")
+    http_code=$(echo "$upload_result" | grep -o "HTTP_CODE:[0-9]*" | cut -d: -f2)
+    if [ "$http_code" = "201" ]; then
+        # Убираем HTTP_CODE из ответа перед парсингом JSON
+        json_response=$(echo "$upload_result" | sed 's/HTTP_CODE:[0-9]*$//')
+        model_id=$(echo "$json_response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('id', ''))" 2>/dev/null)
+        if [ -n "$model_id" ] && [ "$model_id" != "None" ]; then
+            echo "$email:$model_id" >> "$MODELS_FILE"
+            model_count=$((model_count + 1))
+            echo "   ✅ Модель загружена: $model_name (ID: $model_id)"
+        else
+            echo "   ⚠️  Не удалось получить model_id из ответа"
+        fi
+    else
+        error_msg=$(echo "$upload_result" | sed 's/HTTP_CODE:[0-9]*$//' | head -3)
+        echo "   ❌ Ошибка загрузки модели (HTTP $http_code): $error_msg"
+    fi
+done
+
+# Создание предсказаний через API
+echo ""
+echo "🔮 Создание предсказаний через API..."
+total_predictions=0
+
+while IFS=: read -r email model_id; do
+    token=$(grep "^$email:" "$TOKENS_FILE" | cut -d: -f2)
+    
+    if [ -z "$token" ] || [ -z "$model_id" ]; then
+        continue
+    fi
+    
+    echo ""
+    echo "   Пользователь: $email, Model ID: $model_id"
+    
+    # Создаем 1-3 предсказания
+    user_num=$(echo "$email" | grep -o '[0-9]')
+    num_predictions=$((user_num % 3 + 1))
+    
+    for j in $(seq 1 $num_predictions); do
+        feature1=$(echo "scale=2; $user_num + $j" | bc)
+        feature2=$(echo "scale=2; $user_num + $j + 1" | bc)
+        
+        pred_result=$(create_prediction "$token" "$model_id" "$feature1" "$feature2")
+        http_code=$(echo "$pred_result" | grep -o "HTTP_CODE:[0-9]*" | cut -d: -f2)
+        
+        if [ "$http_code" = "202" ]; then
+            json_response=$(echo "$pred_result" | sed 's/HTTP_CODE:[0-9]*$//')
+            prediction_id=$(echo "$json_response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('prediction_id', '?'))" 2>/dev/null)
+            echo "   ✅ Предсказание #$j: создано (ID: $prediction_id)"
+            total_predictions=$((total_predictions + 1))
+        else
+            error_msg=$(echo "$pred_result" | sed 's/HTTP_CODE:[0-9]*$//' | head -2)
+            echo "   ❌ Ошибка создания предсказания #$j (HTTP $http_code): $error_msg"
+        fi
+    done
+done < "$MODELS_FILE"
+
+# Удаляем временные файлы
+rm -f "$MODEL_FILE" "$TOKENS_FILE" "$MODELS_FILE"
+
+# Итоговая статистика
+echo ""
+echo "============================================================"
+echo "📊 Итоговая статистика:"
+echo "   👥 Пользователей создано: $((user_count + 1)) (1 админ, $user_count обычных)"
+echo "   🤖 ML моделей загружено: $model_count"
+echo "   🔮 Предсказаний создано: $total_predictions"
+echo ""
+echo "✅ Инициализация данных завершена успешно!"
+echo ""
+echo "📝 Учетные данные:"
+echo "   Администратор:"
+echo "     Email: admin@mlservice.com"
+echo "     Password: admin123"
+echo ""
+echo "   Обычные пользователи:"
+for user_data in "${USERS[@]}"; do
+    email=$(echo "$user_data" | cut -d: -f1)
+    password=$(echo "$user_data" | cut -d: -f2)
+    echo "     $email / $password"
+done
