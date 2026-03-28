@@ -1,0 +1,11 @@
+.git
+.pytest_cache
+.coverage
+.DS_Store
+__pycache__/
+*.py[cod]
+venv/
+var/
+tmp_smoke_models/
+ml_models/
+README_for_me.md
