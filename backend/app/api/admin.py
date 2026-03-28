@@ -1,5 +1,3 @@
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -37,8 +35,8 @@ def get_user(user_id: int, current_user: User = Depends(get_current_admin), db: 
 def list_all_predictions(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    user_id: Optional[int] = Query(None),
-    model_id: Optional[int] = Query(None),
+    user_id: int | None = Query(None),
+    model_id: int | None = Query(None),
     current_user: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
@@ -70,7 +68,7 @@ def get_prediction(
 def list_all_transactions(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    user_id: Optional[int] = Query(None),
+    user_id: int | None = Query(None),
     current_user: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
@@ -87,7 +85,7 @@ def list_all_transactions(
 def list_all_payments(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    user_id: Optional[int] = Query(None),
+    user_id: int | None = Query(None),
     current_user: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):

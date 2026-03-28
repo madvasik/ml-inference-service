@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -32,8 +32,6 @@ class Settings(BaseSettings):
 
     ml_models_dir: str = "var/ml_models"
 
-    redis_url: str = "redis://redis:6379/0"
-
     celery_broker_url: str = "redis://redis:6379/0"
     celery_result_backend: str = "redis://redis:6379/0"
     celery_task_always_eager: bool = False
@@ -45,8 +43,8 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 100
     log_json_format: bool = False
 
-    initial_admin_email: Optional[str] = None
-    initial_admin_password: Optional[str] = None
+    initial_admin_email: str | None = None
+    initial_admin_password: str | None = None
     initial_admin_credits: int = 10000
 
     model_config = SettingsConfigDict(

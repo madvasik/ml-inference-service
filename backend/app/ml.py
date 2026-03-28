@@ -1,6 +1,6 @@
 import pickle
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 from sklearn.base import BaseEstimator
@@ -15,7 +15,7 @@ def validate_model_file(file_path: str) -> bool:
         return False
 
 
-def load_model(file_path: str) -> Optional[BaseEstimator]:
+def load_model(file_path: str) -> BaseEstimator:
     model_path = Path(file_path)
     if not model_path.exists():
         raise FileNotFoundError(f"Model file not found: {file_path}")
@@ -30,25 +30,18 @@ def load_model(file_path: str) -> Optional[BaseEstimator]:
         raise ValueError(f"Failed to load model: {exc}")
 
 
-def save_model(model: BaseEstimator, file_path: str) -> None:
-    path = Path(file_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "wb") as file:
-        pickle.dump(model, file)
-
-
 def get_model_type(model: BaseEstimator) -> str:
     model_class = model.__class__.__name__.lower()
     if "classifier" in model_class or "classif" in model_class:
         return "classification"
     if "regressor" in model_class or "regress" in model_class:
         return "regression"
-    if "cluster" in model_class:
+    if "cluster" in model_class or model_class.endswith("means"):
         return "clustering"
     return "unknown"
 
 
-def prepare_features(input_data: Dict[str, Any], feature_names: List[str] = None) -> np.ndarray:
+def prepare_features(input_data: dict[str, Any], feature_names: list[str] | None = None) -> np.ndarray:
     features = [input_data.get(name, 0) for name in feature_names] if feature_names else list(input_data.values())
     return np.array(features).reshape(1, -1)
 
@@ -67,7 +60,7 @@ def _to_jsonable(value: Any) -> Any:
     return value
 
 
-def predict(model: BaseEstimator, input_data: Dict[str, Any]) -> Dict[str, Any]:
+def predict(model: BaseEstimator, input_data: dict[str, Any]) -> dict[str, Any]:
     try:
         feature_names = model.feature_names_in_.tolist() if hasattr(model, "feature_names_in_") else None
         features = prepare_features(input_data, feature_names)

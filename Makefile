@@ -24,7 +24,7 @@ e2e:
 	GRAFANA_URL=$${GRAFANA_URL:-http://localhost:3000} \
 	GRAFANA_USER=$${GRAFANA_USER:-admin} \
 	GRAFANA_PASSWORD=$${GRAFANA_PASSWORD:-admin} \
-	$(PYTEST) tests/e2e -m e2e -o addopts='-v --strict-markers'
+	$(PYTEST) tests/e2e -m e2e --no-cov -v --strict-markers -o addopts=''
 
 clean:
 	rm -rf var/smoke_models var/reports

@@ -72,3 +72,17 @@ def test_users_me_requires_authentication(client):
     response = client.get("/api/v1/users/me")
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+def test_invalid_token_is_rejected(client):
+    response = client.get("/api/v1/users/me", headers=auth_headers("not-a-real-token"))
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+def test_rate_limit_headers_are_present(client):
+    response = client.get("/health")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert "X-RateLimit-Limit" in response.headers
+    assert "X-RateLimit-Remaining" in response.headers

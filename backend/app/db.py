@@ -74,11 +74,6 @@ def database_schema_status(db: Session) -> tuple[bool, str, list[str]]:
     return True, "ok", []
 
 
-def schema_is_ready(db: Session) -> bool:
-    ready, _, _ = database_schema_status(db)
-    return ready
-
-
 def probe_database_health(session_factory=None) -> tuple[str, str, list[str]]:
     db_status = "unknown"
     schema_status = "unknown"

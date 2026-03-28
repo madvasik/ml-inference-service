@@ -38,7 +38,6 @@ celery_app = Celery(
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
 )
-celery = celery_app
 
 celery_app.conf.update(
     task_serializer="json",

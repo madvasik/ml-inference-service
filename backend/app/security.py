@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 import bcrypt
 from fastapi import Depends, HTTPException, status
@@ -30,7 +29,7 @@ def get_password_hash(password: str) -> str:
     return bcrypt.hashpw(password_bytes, salt).decode("utf-8")
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
@@ -46,7 +45,7 @@ def create_refresh_token(data: dict) -> str:
     return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 
 
-def decode_token(token: str) -> Optional[dict]:
+def decode_token(token: str) -> dict | None:
     try:
         return jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
     except JWTError:
@@ -69,8 +68,8 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user_id_str: Optional[str] = payload.get("sub")
-    token_type: Optional[str] = payload.get("type")
+    user_id_str: str | None = payload.get("sub")
+    token_type: str | None = payload.get("type")
 
     if user_id_str is None or token_type != "access":
         raise HTTPException(

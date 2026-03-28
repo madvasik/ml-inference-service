@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 import time
 from collections import defaultdict
-from typing import Dict, Tuple
 
 from fastapi import Request, status
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -52,11 +53,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app):
         super().__init__(app)
-        self._requests: Dict[str, list] = defaultdict(list)
+        self._requests: dict[str, list] = defaultdict(list)
         self._cleanup_interval = 300
         self._last_cleanup = time.time()
 
-    def _get_key(self, request: Request) -> Tuple[str, bool]:
+    def _get_key(self, request: Request) -> tuple[str, bool]:
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
             try:
@@ -92,7 +93,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         self._last_cleanup = current_time
 
-    def _check_rate_limit(self, key: str, limit: int, window: int = 60) -> Tuple[bool, int]:
+    def _check_rate_limit(self, key: str, limit: int, window: int = 60) -> tuple[bool, int]:
         current_time = time.time()
         cutoff_time = current_time - window
 

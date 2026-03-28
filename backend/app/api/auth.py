@@ -1,5 +1,3 @@
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -72,8 +70,8 @@ def refresh_token(request: RefreshTokenRequest, db: Session = Depends(get_db)):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    token_type: Optional[str] = payload.get("type")
-    user_id: Optional[str] = payload.get("sub")
+    token_type: str | None = payload.get("type")
+    user_id: str | None = payload.get("sub")
     if token_type != "refresh" or user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
