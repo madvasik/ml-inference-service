@@ -1,19 +1,30 @@
 import streamlit as st
 
-from dashboard.api_client import APIClient
-from dashboard.config import (
-    DEFAULT_ADMIN_EMAIL,
-    DEFAULT_ADMIN_PASSWORD,
-    PAGE_TITLE,
-    configure_page,
-)
-from dashboard.views import (
-    render_payments_tab,
-    render_predictions_tab,
-    render_stats_tab,
-    render_transactions_tab,
-    render_users_tab,
-)
+try:
+    from dashboard.api_client import APIClient
+    from dashboard.config import (
+        DEFAULT_ADMIN_EMAIL,
+        DEFAULT_ADMIN_PASSWORD,
+        PAGE_TITLE,
+        configure_page,
+    )
+    from dashboard.views import (
+        render_payments_tab,
+        render_predictions_tab,
+        render_stats_tab,
+        render_transactions_tab,
+        render_users_tab,
+    )
+except ModuleNotFoundError:
+    from api_client import APIClient
+    from config import DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD, PAGE_TITLE, configure_page
+    from views import (
+        render_payments_tab,
+        render_predictions_tab,
+        render_stats_tab,
+        render_transactions_tab,
+        render_users_tab,
+    )
 
 
 def init_session_state() -> None:

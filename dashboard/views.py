@@ -4,7 +4,10 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from dashboard.api_client import APIClient
+try:
+    from dashboard.api_client import APIClient
+except ModuleNotFoundError:
+    from api_client import APIClient
 
 
 def render_users_tab(api_client: APIClient, token: str) -> None:

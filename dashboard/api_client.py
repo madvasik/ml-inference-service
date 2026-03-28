@@ -5,7 +5,10 @@ from typing import Any
 import requests
 import streamlit as st
 
-from dashboard.config import API_TIMEOUT_SECONDS, BASE_URL
+try:
+    from dashboard.config import API_TIMEOUT_SECONDS, BASE_URL
+except ModuleNotFoundError:
+    from config import API_TIMEOUT_SECONDS, BASE_URL
 
 
 class APIClient:
