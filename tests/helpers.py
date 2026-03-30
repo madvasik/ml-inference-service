@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import pickle
 import tempfile
 import time
 from contextlib import contextmanager
 from uuid import uuid4
 
 import numpy as np
+from skops.io import dump as skops_dump
 from sklearn.ensemble import RandomForestClassifier
 
 
@@ -25,8 +25,8 @@ def temporary_model_file():
     model = RandomForestClassifier(n_estimators=10, random_state=42)
     model.fit(features, labels)
 
-    with tempfile.NamedTemporaryFile(suffix=".pkl") as temp_file:
-        pickle.dump(model, temp_file)
+    with tempfile.NamedTemporaryFile(suffix=".skops") as temp_file:
+        skops_dump(model, temp_file.name)
         temp_file.flush()
         yield temp_file.name
 

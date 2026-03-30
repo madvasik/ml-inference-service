@@ -125,7 +125,7 @@ def execute_prediction(self, prediction_id: int):
             return {"status": "failed", "error": "Model not found"}
 
         ml_model = load_model(model.file_path)
-        result = predict(ml_model, prediction.input_data)
+        result = predict(ml_model, prediction.input_data, feature_names=model.feature_names)
         prediction_latency_seconds.labels(model_id=model_id_str).observe(time.time() - start_time)
 
         prediction = db.query(Prediction).filter(Prediction.id == prediction_id).with_for_update().first()

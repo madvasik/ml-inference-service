@@ -1,16 +1,22 @@
-import pickle
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+from skops.io import get_untrusted_types, load as skops_load
 from sklearn.base import BaseEstimator
 
 
 def validate_model_file(file_path: str) -> bool:
+    model_path = Path(file_path)
+    if not model_path.exists():
+        return False
+
     try:
-        with open(file_path, "rb") as file:
-            model = pickle.load(file)
-            return isinstance(model, BaseEstimator)
+        if get_untrusted_types(file=model_path):
+            return False
+
+        model = skops_load(model_path, trusted=[])
+        return isinstance(model, BaseEstimator)
     except Exception:
         return False
 
@@ -21,11 +27,16 @@ def load_model(file_path: str) -> BaseEstimator:
         raise FileNotFoundError(f"Model file not found: {file_path}")
 
     try:
-        with open(model_path, "rb") as file:
-            model = pickle.load(file)
-            if not isinstance(model, BaseEstimator):
-                raise ValueError("File does not contain a valid scikit-learn model")
-            return model
+        untrusted_types = get_untrusted_types(file=model_path)
+        if untrusted_types:
+            raise ValueError("Model file contains untrusted types")
+
+        model = skops_load(model_path, trusted=[])
+        if not isinstance(model, BaseEstimator):
+            raise ValueError("File does not contain a valid scikit-learn model")
+        return model
+    except ValueError:
+        raise
     except Exception as exc:
         raise ValueError(f"Failed to load model: {exc}")
 
@@ -41,8 +52,34 @@ def get_model_type(model: BaseEstimator) -> str:
     return "unknown"
 
 
+def get_feature_names(model: BaseEstimator) -> list[str] | None:
+    if not hasattr(model, "feature_names_in_"):
+        return None
+
+    feature_names = model.feature_names_in_
+    if hasattr(feature_names, "tolist"):
+        feature_names = feature_names.tolist()
+    return [str(name) for name in feature_names]
+
+
+def validate_input_features(input_data: dict[str, Any], feature_names: list[str] | None) -> None:
+    if not feature_names:
+        raise ValueError("Model feature schema is unavailable")
+
+    missing_features = [name for name in feature_names if name not in input_data]
+    unexpected_features = [name for name in input_data if name not in feature_names]
+    if missing_features or unexpected_features:
+        details = []
+        if missing_features:
+            details.append(f"missing features: {', '.join(missing_features)}")
+        if unexpected_features:
+            details.append(f"unexpected features: {', '.join(unexpected_features)}")
+        raise ValueError("; ".join(details))
+
+
 def prepare_features(input_data: dict[str, Any], feature_names: list[str] | None = None) -> np.ndarray:
-    features = [input_data.get(name, 0) for name in feature_names] if feature_names else list(input_data.values())
+    validate_input_features(input_data, feature_names)
+    features = [input_data[name] for name in feature_names]
     return np.array(features).reshape(1, -1)
 
 
@@ -60,10 +97,10 @@ def _to_jsonable(value: Any) -> Any:
     return value
 
 
-def predict(model: BaseEstimator, input_data: dict[str, Any]) -> dict[str, Any]:
+def predict(model: BaseEstimator, input_data: dict[str, Any], feature_names: list[str] | None = None) -> dict[str, Any]:
     try:
-        feature_names = model.feature_names_in_.tolist() if hasattr(model, "feature_names_in_") else None
-        features = prepare_features(input_data, feature_names)
+        resolved_feature_names = feature_names or get_feature_names(model)
+        features = prepare_features(input_data, resolved_feature_names)
         prediction = model.predict(features)
         result = {"prediction": _to_jsonable(prediction[0])}
         if hasattr(model, "predict_proba"):

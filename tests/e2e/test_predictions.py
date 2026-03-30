@@ -1,6 +1,7 @@
 """E2e tests for prediction creation, execution, scoping, and edge cases."""
 from __future__ import annotations
 
+import json
 import os
 
 import pytest
@@ -10,8 +11,8 @@ from tests.helpers import auth_headers, temporary_model_file, unique_email, wait
 
 
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
-ADMIN_EMAIL = os.getenv("INITIAL_ADMIN_EMAIL", "admin@mlservice.com")
-ADMIN_PASSWORD = os.getenv("INITIAL_ADMIN_PASSWORD", "admin123")
+ADMIN_EMAIL = os.getenv("INITIAL_ADMIN_EMAIL")
+ADMIN_PASSWORD = os.getenv("INITIAL_ADMIN_PASSWORD")
 
 
 def _request(method: str, path: str, **kwargs):
@@ -36,8 +37,8 @@ def _upload_model(headers: dict[str, str]) -> int:
                 "POST",
                 "/api/v1/models/upload",
                 headers=headers,
-                data={"model_name": "e2e-test-model"},
-                files={"file": ("model.pkl", f, "application/octet-stream")},
+                data={"model_name": "e2e-test-model", "feature_names": json.dumps(["feature1", "feature2"])},
+                files={"file": ("model.skops", f, "application/octet-stream")},
             )
     assert resp.status_code == 201, resp.text
     return resp.json()["id"]
@@ -133,8 +134,8 @@ def test_live_prediction_insufficient_balance():
                 "POST",
                 "/api/v1/models/upload",
                 headers=headers,
-                data={"model_name": "own-model"},
-                files={"file": ("model.pkl", f, "application/octet-stream")},
+                data={"model_name": "own-model", "feature_names": json.dumps(["feature1", "feature2"])},
+                files={"file": ("model.skops", f, "application/octet-stream")},
             )
     assert upload.status_code == 201
 

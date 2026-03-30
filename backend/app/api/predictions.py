@@ -5,6 +5,7 @@ from backend.app.billing import build_prediction_cost_snapshot, get_balance
 from backend.app.config import settings
 from backend.app.db import get_db
 from backend.app.loyalty import get_loyalty_snapshot
+from backend.app.ml import validate_input_features
 from backend.app.models import MLModel, Prediction, PredictionStatus, User
 from backend.app.schemas import PredictionCreate, PredictionList, PredictionResponse, PredictionTaskResponse
 from backend.app.security import get_current_user
@@ -28,6 +29,10 @@ def create_prediction(
     )
     if model is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not found")
+    try:
+        validate_input_features(prediction_data.input_data, model.feature_names)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     request.state.model_id = str(prediction_data.model_id)
     loyalty_snapshot = get_loyalty_snapshot(current_user)

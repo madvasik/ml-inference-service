@@ -21,7 +21,7 @@ class APIClient:
             return {}
         return {"Authorization": f"Bearer {token}"}
 
-    def login(self, email: str, password: str) -> tuple[bool, str | None, dict[str, Any] | None]:
+    def login(self, email: str, password: str) -> tuple[bool, str | None, dict[str, Any] | None, str | None]:
         try:
             response = requests.post(
                 f"{self.base_url}/api/v1/auth/login",
@@ -29,7 +29,7 @@ class APIClient:
                 timeout=self.timeout,
             )
             if response.status_code != 200:
-                return False, None, None
+                return False, None, None, "Неверный email или пароль"
 
             token = response.json()["access_token"]
             user_response = requests.get(
@@ -38,11 +38,10 @@ class APIClient:
                 timeout=self.timeout,
             )
             if user_response.status_code != 200:
-                return False, None, None
-            return True, token, user_response.json()
+                return False, None, None, "Не удалось получить профиль пользователя"
+            return True, token, user_response.json(), None
         except requests.RequestException as exc:
-            st.error(f"Ошибка подключения к API: {exc}")
-            return False, None, None
+            return False, None, None, f"Ошибка подключения к API: {exc}"
 
     def fetch_users(self, token: str) -> list[dict[str, Any]]:
         try:

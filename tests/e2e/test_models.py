@@ -1,6 +1,7 @@
 """E2e tests for ML model upload, listing, detail, and deletion."""
 from __future__ import annotations
 
+import json
 import os
 
 import pytest
@@ -30,8 +31,8 @@ def _upload_model(headers: dict[str, str]) -> int:
                 "POST",
                 "/api/v1/models/upload",
                 headers=headers,
-                data={"model_name": "e2e-test-model"},
-                files={"file": ("model.pkl", f, "application/octet-stream")},
+                data={"model_name": "e2e-test-model", "feature_names": json.dumps(["feature1", "feature2"])},
+                files={"file": ("model.skops", f, "application/octet-stream")},
             )
     assert resp.status_code == 201, resp.text
     return resp.json()["id"]
@@ -60,7 +61,7 @@ def test_live_model_upload_list_get_delete():
 
 
 @pytest.mark.e2e
-def test_live_model_upload_rejects_non_pkl():
+def test_live_model_upload_rejects_non_skops():
     headers = _register("badpkl")
     resp = _request(
         "POST",
@@ -73,14 +74,14 @@ def test_live_model_upload_rejects_non_pkl():
 
 
 @pytest.mark.e2e
-def test_live_model_upload_rejects_invalid_pkl():
+def test_live_model_upload_rejects_invalid_skops():
     headers = _register("fakepkl")
     resp = _request(
         "POST",
         "/api/v1/models/upload",
         headers=headers,
         data={"model_name": "fake"},
-        files={"file": ("model.pkl", b"not a pickle", "application/octet-stream")},
+        files={"file": ("model.skops", b"not a safe model", "application/octet-stream")},
     )
     assert resp.status_code == 400
 

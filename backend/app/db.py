@@ -11,24 +11,50 @@ from backend.app.config import settings
 
 Base = declarative_base()
 
-engine_kwargs = {
-    "echo": settings.debug,
-}
+engine = None
+_session_factory = None
 
-if settings.database_url.startswith("sqlite"):
-    engine_kwargs["connect_args"] = {"check_same_thread": False}
-else:
-    engine_kwargs.update(
-        {
-            "pool_size": 10,
-            "max_overflow": 20,
-            "pool_pre_ping": True,
-            "pool_recycle": 3600,
-        }
-    )
 
-engine = create_engine(settings.database_url, **engine_kwargs)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+def _build_engine():
+    engine_kwargs = {
+        "echo": settings.debug,
+    }
+
+    if settings.database_url.startswith("sqlite"):
+        engine_kwargs["connect_args"] = {"check_same_thread": False}
+    else:
+        engine_kwargs.update(
+            {
+                "pool_size": 10,
+                "max_overflow": 20,
+                "pool_pre_ping": True,
+                "pool_recycle": 3600,
+            }
+        )
+
+    return create_engine(settings.database_url, **engine_kwargs)
+
+
+def get_engine():
+    global engine
+    if engine is None:
+        engine = _build_engine()
+    return engine
+
+
+def get_session_factory():
+    global _session_factory
+    if _session_factory is None:
+        _session_factory = sessionmaker(autocommit=False, autoflush=False, bind=get_engine())
+    return _session_factory
+
+
+class LazySessionFactory:
+    def __call__(self, *args, **kwargs):
+        return get_session_factory()(*args, **kwargs)
+
+
+SessionLocal = LazySessionFactory()
 
 
 REQUIRED_TABLES = frozenset(

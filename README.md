@@ -119,7 +119,7 @@ docker-compose.yml            # запуск всего стека
 
 1. Пользователь регистрируется/логинится -> получает `access_token`.
 2. Пополняет баланс кредитов через billing API.
-3. Загружает `model.pkl` -> backend сохраняет файл и метаданные.
+3. Загружает `model.skops` -> backend сохраняет файл и метаданные.
 4. `POST /predictions` создаёт запись и отправляет задачу в Celery.
 5. Celery worker загружает модель, считает результат, списывает кредиты **только после успеха**.
 6. Результат доступен через `GET /predictions/{prediction_id}`.
@@ -164,7 +164,7 @@ make smoke
 - `GET /api/v1/users/me` — текущий пользователь
 
 **Models:**
-- `POST /api/v1/models/upload` — загрузка .pkl модели
+- `POST /api/v1/models/upload` — загрузка `.skops` модели
 - `GET /api/v1/models` — список моделей пользователя
 - `GET /api/v1/models/{model_id}` — детали модели
 - `DELETE /api/v1/models/{model_id}` — удаление модели
@@ -211,7 +211,8 @@ curl -X POST http://localhost:8000/api/v1/billing/payments \
 curl -X POST http://localhost:8000/api/v1/models/upload \
   -H "Authorization: Bearer <ACCESS_TOKEN>" \
   -F "model_name=my-model" \
-  -F "file=@model.pkl"
+  -F 'feature_names=["feature1","feature2"]' \
+  -F "file=@model.skops"
 
 # 4. Создание предсказания
 curl -X POST http://localhost:8000/api/v1/predictions \
@@ -336,7 +337,7 @@ make e2e           # e2e-тесты (требует docker compose up)
 | `test_system.py` | health, root, metrics, docs, monitoring stack, Grafana, Streamlit |
 | `test_auth.py` | auth flow, дубликаты, wrong password, токены, protected endpoints, профиль |
 | `test_billing.py` | payments, валидация, накопление |
-| `test_models.py` | CRUD, валидация (non-pkl, invalid pkl, wrong extension) |
+| `test_models.py` | CRUD, валидация (non-skops, invalid skops, wrong extension) |
 | `test_predictions.py` | полный workflow, zero balance, foreign model, scoping, multiple debits |
 | `test_admin.py` | platform data, фильтрация по user, 404, access control |
 
@@ -345,12 +346,12 @@ make e2e           # e2e-тесты (требует docker compose up)
 | Переменная | По умолчанию | Описание |
 |------------|-------------|----------|
 | `DATABASE_URL` | postgresql://... | Строка подключения к БД |
-| `SECRET_KEY` | your-secret-key... | Секрет для JWT |
+| `SECRET_KEY` | - | Обязательный JWT-секрет длиной от 32 символов |
 | `ALGORITHM` | HS256 | Алгоритм JWT |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | 30 | Время жизни access token |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | 7 | Время жизни refresh token |
 | `PREDICTION_COST` | 10 | Базовая стоимость предсказания |
-| `DEBUG` | True | Debug-режим |
+| `DEBUG` | False | Debug-режим |
 | `ML_MODELS_DIR` | var/ml_models | Директория хранения моделей |
 | `CELERY_BROKER_URL` | redis://redis:6379/0 | Брокер Celery |
 | `CELERY_RESULT_BACKEND` | redis://redis:6379/0 | Result backend |
@@ -358,8 +359,8 @@ make e2e           # e2e-тесты (требует docker compose up)
 | `RATE_LIMIT_PER_MINUTE` | 1000 | Глобальный rate limit |
 | `RATE_LIMIT_PER_USER_PER_MINUTE` | 100 | Per-user rate limit |
 | `MAX_UPLOAD_SIZE_MB` | 100 | Макс. размер модели |
-| `INITIAL_ADMIN_EMAIL` | - | Email начального админа |
-| `INITIAL_ADMIN_PASSWORD` | - | Пароль начального админа |
+| `INITIAL_ADMIN_EMAIL` | - | Обязательный email начального админа для docker-compose |
+| `INITIAL_ADMIN_PASSWORD` | - | Обязательный пароль начального админа длиной от 12 символов |
 | `INITIAL_ADMIN_CREDITS` | 10000 | Начальный баланс админа |
 
 Все секреты задаются через `.env` или переменные окружения. Пример: `.env.example`.

@@ -1,3 +1,5 @@
+import json
+
 from unittest.mock import Mock, patch
 
 from backend.app.models import Prediction, PredictionStatus, Transaction
@@ -21,8 +23,8 @@ def test_full_workflow_charges_only_after_success(client, db_session, test_model
         model_response = client.post(
             "/api/v1/models/upload",
             headers=headers,
-            files={"file": ("model.pkl", file, "application/octet-stream")},
-            data={"model_name": "workflow-model"},
+            files={"file": ("model.skops", file, "application/octet-stream")},
+            data={"model_name": "workflow-model", "feature_names": json.dumps(["feature1", "feature2"])},
         )
     assert model_response.status_code == 201
     model_id = model_response.json()["id"]

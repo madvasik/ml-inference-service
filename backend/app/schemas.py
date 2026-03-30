@@ -93,7 +93,6 @@ class MLModelResponse(BaseModel):
     id: int
     owner_id: int
     model_name: str
-    file_path: str
     model_type: str | None
     created_at: datetime
 

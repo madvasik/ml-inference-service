@@ -1,14 +1,63 @@
 from __future__ import annotations
 
+import logging
 import time
-from collections import defaultdict
 
 from fastapi import Request, status
+from redis import Redis
+from redis.exceptions import RedisError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 from backend.app.config import settings
 from backend.app.metrics import prediction_errors_total, prediction_requests_total
+
+
+logger = logging.getLogger(__name__)
+
+
+class InMemoryRateLimitStore:
+    def __init__(self):
+        self._buckets: dict[str, tuple[int, int]] = {}
+
+    def increment(self, key: str, limit: int, window: int) -> tuple[bool, int, int]:
+        current_time = int(time.time())
+        window_start = current_time - (current_time % window)
+        reset_at = window_start + window
+        bucket_key = f"{window_start}:{key}"
+        count, _ = self._buckets.get(bucket_key, (0, reset_at))
+        count += 1
+        self._buckets = {
+            existing_key: value
+            for existing_key, value in self._buckets.items()
+            if value[1] > current_time
+        }
+        self._buckets[bucket_key] = (count, reset_at)
+        allowed = count <= limit
+        remaining = max(0, limit - count)
+        return allowed, remaining, reset_at
+
+
+class RedisRateLimitStore:
+    def __init__(self, redis_client: Redis | None = None, redis_url: str | None = None):
+        self._redis = redis_client or Redis.from_url(
+            redis_url or settings.rate_limit_storage_url or settings.celery_broker_url,
+            decode_responses=True,
+        )
+
+    def increment(self, key: str, limit: int, window: int) -> tuple[bool, int, int]:
+        current_time = int(time.time())
+        window_start = current_time - (current_time % window)
+        reset_at = window_start + window
+        bucket_key = f"rate_limit:{window_start}:{key}"
+        pipeline = self._redis.pipeline()
+        pipeline.incr(bucket_key)
+        pipeline.expire(bucket_key, window + 1)
+        request_count, _ = pipeline.execute()
+        count = int(request_count)
+        allowed = count <= limit
+        remaining = max(0, limit - count)
+        return allowed, remaining, reset_at
 
 
 class MetricsMiddleware(BaseHTTPMiddleware):
@@ -49,13 +98,13 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Simple in-memory rate limiting."""
+    """Redis-backed rate limiting shared across app instances."""
+
+    WINDOW_SECONDS = 60
 
     def __init__(self, app):
         super().__init__(app)
-        self._requests: dict[str, list] = defaultdict(list)
-        self._cleanup_interval = 300
-        self._last_cleanup = time.time()
+        self._store = RedisRateLimitStore()
 
     def _get_key(self, request: Request) -> tuple[str, bool]:
         auth_header = request.headers.get("Authorization")
@@ -75,42 +124,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         client_ip = request.client.host if request.client else "unknown"
         return f"ip:{client_ip}", False
 
-    def _cleanup_old_entries(self):
-        current_time = time.time()
-        if current_time - self._last_cleanup < self._cleanup_interval:
-            return
-
-        cutoff_time = current_time - 120
-        keys_to_delete = []
-
-        for key, timestamps in self._requests.items():
-            self._requests[key] = [ts for ts in timestamps if ts > cutoff_time]
-            if not self._requests[key]:
-                keys_to_delete.append(key)
-
-        for key in keys_to_delete:
-            del self._requests[key]
-
-        self._last_cleanup = current_time
-
-    def _check_rate_limit(self, key: str, limit: int, window: int = 60) -> tuple[bool, int]:
-        current_time = time.time()
-        cutoff_time = current_time - window
-
-        self._requests[key] = [ts for ts in self._requests[key] if ts > cutoff_time]
-
-        count = len(self._requests[key])
-        if count >= limit:
-            return False, 0
-
-        self._requests[key].append(current_time)
-        remaining = max(0, limit - count - 1)
-        return True, remaining
-
     async def dispatch(self, request: Request, call_next):
         is_excluded = request.url.path in ["/metrics", "/health", "/", "/docs", "/openapi.json", "/redoc"]
-
-        self._cleanup_old_entries()
 
         key, is_user = self._get_key(request)
         limit = settings.rate_limit_per_user_per_minute if is_user else settings.rate_limit_per_minute
@@ -119,10 +134,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             response.headers["X-RateLimit-Limit"] = str(limit)
             response.headers["X-RateLimit-Remaining"] = str(limit)
-            response.headers["X-RateLimit-Reset"] = str(int(time.time()) + 60)
+            response.headers["X-RateLimit-Reset"] = str(int(time.time()) + self.WINDOW_SECONDS)
             return response
 
-        allowed, remaining = self._check_rate_limit(key, limit)
+        try:
+            allowed, remaining, reset_at = self._store.increment(key, limit, self.WINDOW_SECONDS)
+        except RedisError:
+            logger.exception("Rate limit storage is unavailable")
+            return Response(
+                content='{"detail": "Rate limit service unavailable. Please try again later."}',
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                media_type="application/json",
+            )
 
         if not allowed:
             return Response(
@@ -132,13 +155,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 headers={
                     "X-RateLimit-Limit": str(limit),
                     "X-RateLimit-Remaining": "0",
-                    "X-RateLimit-Reset": str(int(time.time()) + 60),
-                    "Retry-After": "60",
+                    "X-RateLimit-Reset": str(reset_at),
+                    "Retry-After": str(max(1, reset_at - int(time.time()))),
                 },
             )
 
         response = await call_next(request)
         response.headers["X-RateLimit-Limit"] = str(limit)
         response.headers["X-RateLimit-Remaining"] = str(remaining)
-        response.headers["X-RateLimit-Reset"] = str(int(time.time()) + 60)
+        response.headers["X-RateLimit-Reset"] = str(reset_at)
         return response

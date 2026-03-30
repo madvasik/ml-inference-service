@@ -1,6 +1,10 @@
+import asyncio
 import logging
+import json
 
 from backend.app import db as db_module
+from backend.app.config import Settings
+from backend.app.main import general_exception_handler
 from backend.app.log_config import JSONFormatter, setup_logging
 
 
@@ -69,3 +73,19 @@ def test_json_formatter_outputs_expected_fields():
 
     assert '"logger": "test.logger"' in payload
     assert '"message": "hello"' in payload
+
+
+def test_debug_defaults_to_false():
+    assert Settings.model_fields["debug"].default is False
+
+
+def test_general_exception_handler_hides_exception_details():
+    response = asyncio.run(
+        general_exception_handler(
+            request=None,
+            exc=RuntimeError("database password leaked"),
+        )
+    )
+
+    assert response.status_code == 500
+    assert json.loads(response.body) == {"detail": "Internal server error"}

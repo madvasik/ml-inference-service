@@ -62,3 +62,14 @@ def test_prediction_endpoints_are_scoped_to_owner(client, access_token_for, admi
     )
 
     assert response.status_code == 404
+
+
+def test_prediction_rejects_payload_with_missing_features(client, access_token_for, test_user, test_ml_model):
+    response = client.post(
+        "/api/v1/predictions",
+        headers=auth_headers(access_token_for(test_user)),
+        json={"model_id": test_ml_model.id, "input_data": {"feature1": 1.0}},
+    )
+
+    assert response.status_code == 400
+    assert "missing features" in response.json()["detail"]

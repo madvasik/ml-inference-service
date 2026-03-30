@@ -99,6 +99,7 @@ class MLModel(Base):
     model_name = Column(String, nullable=False)
     file_path = Column(String, nullable=False)
     model_type = Column(String, nullable=True)
+    feature_names = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     owner = relationship("User", backref="models")

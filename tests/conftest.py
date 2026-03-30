@@ -1,10 +1,10 @@
 import os
-import pickle
 import tempfile
 
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from skops.io import dump as skops_dump
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sklearn.ensemble import RandomForestClassifier
@@ -14,6 +14,7 @@ from backend.app.db import Base, get_db
 from backend.app.main import app
 import backend.app.db as db_module
 import backend.app.main as main_module
+import backend.app.middleware as middleware_module
 import backend.app.worker as worker_module
 from backend.app.models import Balance, MLModel, User, UserRole
 from backend.app.security import create_access_token, get_password_hash
@@ -40,6 +41,16 @@ def override_session_locals(monkeypatch, testing_session_factory):
     monkeypatch.setattr(db_module, "SessionLocal", testing_session_factory)
     monkeypatch.setattr(worker_module, "SessionLocal", testing_session_factory)
     monkeypatch.setattr(main_module.db_module, "SessionLocal", testing_session_factory)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def override_rate_limit_store(monkeypatch):
+    monkeypatch.setattr(
+        middleware_module,
+        "RedisRateLimitStore",
+        middleware_module.InMemoryRateLimitStore,
+    )
     yield
 
 
@@ -120,9 +131,9 @@ def test_model_file():
     model = RandomForestClassifier(n_estimators=10, random_state=42)
     model.fit(X, y)
 
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pkl")
-    pickle.dump(model, temp_file)
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".skops")
     temp_file.close()
+    skops_dump(model, temp_file.name)
 
     yield temp_file.name
 
@@ -137,6 +148,7 @@ def test_ml_model(db_session, test_user, test_model_file):
         model_name="test_model",
         file_path=test_model_file,
         model_type="classification",
+        feature_names=["feature1", "feature2"],
     )
     db_session.add(model)
     db_session.commit()
