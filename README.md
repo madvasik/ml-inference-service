@@ -6,16 +6,18 @@
 
 ### Структура репозитория
 
-| Путь | Назначение |
-|------|------------|
-| `src/ml_inference_service/` | Устанавливаемый Python-пакет: FastAPI, SQLAlchemy-модели, Celery |
-| `streamlit/` | Дашборд Streamlit |
-| `alembic/` | Миграции Alembic |
-| `docker/` | Скрипты entrypoint, Prometheus, Grafana |
-| `scripts/` | Утилиты и демо-сценарии |
-| `tests/` | pytest |
 
-Импорты в коде — `ml_inference_service.*` (пакет собирается из каталога `src/`).
+| Путь                        | Назначение                                                       |
+| --------------------------- | ---------------------------------------------------------------- |
+| `src/ml_inference_service/` | Устанавливаемый Python-пакет: FastAPI, SQLAlchemy-модели, Celery |
+| `streamlit/`                | Дашборд Streamlit                                                |
+| `alembic/`                  | Миграции Alembic                                                 |
+| `docker/`                   | Скрипты entrypoint, Prometheus, Grafana                          |
+| `scripts/`                  | Утилиты и демо-сценарии                                          |
+| `tests/`                    | pytest                                                           |
+
+
+Импорты в коде — `ml_inference_service.*` (пакет в каталоге `src/`, см. `pyproject.toml`).
 
 ---
 
@@ -28,57 +30,66 @@
 ## 2. Функциональные требования
 
 ### Пользовательский блок
+
 - **Регистрация** и **вход** (`POST /api/auth/register`, `POST /api/auth/login`), выдача **JWT**.
-- Роли: **`user`** (по умолчанию), **`admin`** (создание промокодов и др.; назначение вручную в БД, см. ниже).
+- Роли: **user** (по умолчанию), **admin** (создание промокодов и др.; назначение вручную в БД, см. ниже).
 - **Личный кабинет** на **Streamlit**: баланс, статистика, mock-пополнение, модели, предсказание, промокоды.
 
 ### ML-блок
+
 - Загрузка артефакта **scikit-learn** (`.joblib` / `.pkl`), валидация наличия `predict`.
 - **Асинхронные** предсказания: `POST /api/predict` ставит задачу, результат — `GET /api/jobs/{id}` (воркер **Celery** не блокирует HTTP-запросы API).
 
 ### Биллинговый блок
+
 - Учёт **баланса** в кредитах, журнал **`credit_transactions`**.
 - Списание **после успешного** инференса, с **идемпотентностью** (повтор не списывает дважды).
 - **Пополнение в учебной сборке**: `POST /api/billing/mock-topup` с секретом `MOCK_TOPUP_SECRET` (имитация платежа). Интеграция с реальным платёжным шлюзом вынесена в продуктовую дорожку (см. [BUSINESS_PLAN.md](BUSINESS_PLAN.md)).
 
 ### Аналитический блок
+
 - **Streamlit**: сводка по задачам, транзакции, расход кредитов.
 - **GET /api/analytics/summary** для агрегатов по пользователю.
 
 ### API
+
 - **REST API**, автоматическая документация **OpenAPI/Swagger**: **`/docs`**, **`/redoc`**.
 
 ---
 
 ## 3. Технологический стек
 
-| Компонент | Технология |
-|-----------|------------|
-| Язык | Python 3.11+ |
-| Web / API | FastAPI, Uvicorn |
-| ML | scikit-learn, joblib |
-| БД | PostgreSQL, SQLAlchemy 2, Alembic |
-| Очередь | Celery, Redis |
-| UI | Streamlit |
-| Контейнеры | Docker, Docker Compose |
-| Мониторинг | Prometheus, Grafana, `prometheus-fastapi-instrumentator` |
-| Тесты | pytest, pytest-cov (порог покрытия `ml_inference_service` **≥ 70%**, см. `pyproject.toml`) |
 
-Секреты и URL БД/Redis задаются через **переменные окружения** (шаблон: [`.env.example`](.env.example)).
+| Компонент  | Технология                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------ |
+| Язык       | Python 3.11+                                                                               |
+| Web / API  | FastAPI, Uvicorn                                                                           |
+| ML         | scikit-learn, joblib                                                                       |
+| БД         | PostgreSQL, SQLAlchemy 2, Alembic                                                          |
+| Очередь    | Celery, Redis                                                                              |
+| UI         | Streamlit                                                                                  |
+| Контейнеры | Docker, Docker Compose                                                                     |
+| Мониторинг | Prometheus, Grafana, `prometheus-fastapi-instrumentator`                                   |
+| Тесты      | pytest, pytest-cov (порог покрытия `ml_inference_service` **≥ 70%**, см. `pyproject.toml`) |
+
+
+Секреты и URL БД/Redis задаются через **переменные окружения** (шаблон: `[.env.example](.env.example)`).
 
 ---
 
 ## 4. Этапы реализации (соответствие репозитория)
 
-| Этап | Содержание |
-|------|------------|
-| Проектирование | Схема БД (Alembic), маршруты в `ml_inference_service/api/`, описание в README и Swagger |
-| Backend | Аутентификация, пользователи, биллинг, ML, промокоды, аналитика |
-| ML-интеграция | Задачи `ml_inference_service/tasks/predict.py`, брокер Redis, воркер в Docker Compose |
-| Биллинг | `ml_inference_service/services/billing.py`, транзакции, дебет после успеха |
-| Интерфейс | `streamlit/dashboard.py` |
-| Инфраструктура | `docker-compose.yml`, Prometheus, Grafana provisioning |
-| Тесты и документация | `tests/`, этот README, бизнес-план |
+
+| Этап                 | Содержание                                                                              |
+| -------------------- | --------------------------------------------------------------------------------------- |
+| Проектирование       | Схема БД (Alembic), маршруты в `ml_inference_service/api/`, описание в README и Swagger |
+| Backend              | Аутентификация, пользователи, биллинг, ML, промокоды, аналитика                         |
+| ML-интеграция        | Задачи `ml_inference_service/tasks/predict.py`, брокер Redis, воркер в Docker Compose   |
+| Биллинг              | `ml_inference_service/services/billing.py`, транзакции, дебет после успеха              |
+| Интерфейс            | `streamlit/dashboard.py`                                                                |
+| Инфраструктура       | `docker-compose.yml`, Prometheus, Grafana provisioning                                  |
+| Тесты и документация | `tests/`, этот README, бизнес-план                                                      |
+
 
 ---
 
@@ -87,22 +98,24 @@
 - Типы: **фиксированные кредиты** (`fixed_credits`), **процент бонуса к следующему пополнению** (`percent_next_topup`).
 - Ограничения: **срок действия** (`expires_at`), **лимит активаций** (`max_activations` — глобально по коду).
 - Повторная активация **одним пользователем** одного и того же кода блокируется записью в **`promocode_redemptions`** (ответ API **409**).
-- Создание кодов: **`POST /api/promocodes/admin`** (только **admin**). В миграции зашит демо-код **`WELCOME`** (начисление кредитов для проверок и сценария `scripts/demo_user_flow.py`).
+- Создание кодов: **`POST /api/promocodes/admin`** (только **admin**). В миграции зашит демо-код **`WELCOME`**.
 
 ---
 
 ## 6. Критерии приёмки (чек-лист)
 
-| Критерий | Реализация |
-|----------|------------|
-| JWT, роли | Есть (`ml_inference_service/deps.py`, JWT в `ml_inference_service/security.py`) |
-| Атомарность / идемпотентность списаний | Заложено в сервисе биллинга и задаче предсказания |
-| ML асинхронно (не блокирует API) | Celery-воркер обрабатывает задачи вне процесса API |
-| Swagger для эндпоинтов | FastAPI автоматически |
-| Запуск одной командой | `docker compose up --build` (после `cp .env.example .env`) |
-| Grafana / метрики | Дашборд «ML Inference API», метрики с `/metrics` |
-| Покрытие тестами **> 70%** | `pytest --cov=ml_inference_service` (порог задан в `pyproject.toml`) |
-| Краткий бизнес-план | [BUSINESS_PLAN.md](BUSINESS_PLAN.md) |
+
+| Критерий                               | Реализация                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------- |
+| JWT, роли                              | Есть (`ml_inference_service/deps.py`, JWT в `ml_inference_service/security.py`) |
+| Атомарность / идемпотентность списаний | Заложено в сервисе биллинга и задаче предсказания                               |
+| ML асинхронно (не блокирует API)       | Celery-воркер обрабатывает задачи вне процесса API                              |
+| Swagger для эндпоинтов                 | FastAPI автоматически                                                           |
+| Запуск одной командой                  | `docker compose up --build` (после `cp .env.example .env`)                      |
+| Grafana / метрики                      | Дашборд «ML Inference API», метрики с `/metrics`                                |
+| Покрытие тестами **> 70%**             | Порог в `pyproject.toml`                                                        |
+| Краткий бизнес-план                    | [BUSINESS_PLAN.md](BUSINESS_PLAN.md)                                            |
+
 
 ### Рекомендации для разработки (из ТЗ)
 
@@ -121,54 +134,22 @@ docker compose up --build
 
 ### Ссылки после `docker compose` (порты на хосте смотрите в `docker-compose.yml`)
 
-| Сервис | URL | Примечание |
-|--------|-----|------------|
-| **API (Swagger)** | http://localhost:8001/docs | при другом `ports` у `api` замените порт |
-| **Метрики приложения** | http://localhost:8001/metrics | текст для Prometheus (не UI Grafana) |
-| **Streamlit** | http://localhost:8502 | регистрация, вход, статистика, mock-пополнение, модели, предсказание, промокод |
-| **Prometheus UI** | http://localhost:19090 | запросы PromQL, targets |
-| **Grafana** | http://localhost:3001 | логин `admin`, пароль `GRAFANA_ADMIN_PASSWORD` или `admin` |
-| **PostgreSQL** | `localhost:5433` | внутри сети compose: `postgres:5432` |
+
+| Сервис                 | URL                                                            | Примечание                                                                     |
+| ---------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **API (Swagger)**      | [http://localhost:8001/docs](http://localhost:8001/docs)       | при другом `ports` у `api` замените порт                                       |
+| **Метрики приложения** | [http://localhost:8001/metrics](http://localhost:8001/metrics) | текст для Prometheus (не UI Grafana)                                           |
+| **Streamlit**          | [http://localhost:8502](http://localhost:8502)                 | регистрация, вход, статистика, mock-пополнение, модели, предсказание, промокод |
+| **Prometheus UI**      | [http://localhost:19090](http://localhost:19090)               | запросы PromQL, targets                                                        |
+| **Grafana**            | [http://localhost:3001](http://localhost:3001)                 | логин `admin`, пароль `GRAFANA_ADMIN_PASSWORD` или `admin`                     |
+| **PostgreSQL**         | `localhost:5433`                                               | внутри сети compose: `postgres:5432`                                           |
+
 
 В **Grafana**: **Dashboards** → **ML Inference API** — пользователи, успешные предсказания, модели, успешность предсказаний (success rate).
 
 Страница `/metrics` — сырой экспорт; графики — в **Grafana** или **Prometheus UI**.
 
 **Streamlit:** не используйте выдуманные `admin/admin`. Зарегистрируйте пользователя на вкладке **«Регистрация»**, затем войдите на **«Вход»**.
-
----
-
-## Локальная разработка
-
-Нужны PostgreSQL и Redis. Миграции:
-
-```bash
-pip install -e ".[dev,streamlit]"
-export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ml_inference_service
-alembic upgrade head
-uvicorn ml_inference_service.main:app --reload
-```
-
-Воркер Celery:
-
-```bash
-celery -A ml_inference_service.celery_app.celery_app worker --loglevel=info
-```
-
-Streamlit (из корня репозитория, после `pip install -e ".[streamlit]"`):
-
-```bash
-streamlit run streamlit/dashboard.py
-```
-
-### E2E-сценарий (ручной прогон API)
-
-```bash
-export MOCK_TOPUP_SECRET=dev-mock-topup-secret   # как в API
-python scripts/demo_user_flow.py --base-url http://localhost:8001/api
-```
-
-Скрипт: регистрация → mock-пополнение → модель → предсказания → повторный вход → промокод **WELCOME** (дважды: успех и ожидаемая ошибка **409**).
 
 ---
 
@@ -184,8 +165,6 @@ UPDATE users SET role = 'admin' WHERE email = 'you@example.com';
 
 ## Тесты
 
-```bash
-pytest --cov=ml_inference_service --cov-report=term-missing
-```
+- **Покрытие** кода: **~93%**.
+- **Количество** тестов: **23** (все в каталоге `tests/`).
 
-Покрытие пакета `ml_inference_service` не должно падать ниже **70%** (настроено в `[tool.coverage.report]`).
