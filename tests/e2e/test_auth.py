@@ -28,7 +28,7 @@ def _register(prefix: str) -> tuple[str, dict[str, str], dict]:
 
 @pytest.mark.e2e
 def test_live_auth_refresh_and_profile_flow():
-    password, headers, token_payload = _register("authflow")
+    password, headers, _ = _register("authflow")
 
     profile = _request("GET", "/api/v1/users/me", headers=headers)
     assert profile.status_code == 200
