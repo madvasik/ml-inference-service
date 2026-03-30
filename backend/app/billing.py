@@ -2,6 +2,7 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.metrics import billing_transactions_total, payments_total
@@ -44,15 +45,25 @@ def build_prediction_cost_snapshot(base_cost: int, discount_percent: int) -> tup
 
 
 def get_prediction_debit_transaction(db: Session, prediction_id: int) -> Transaction | None:
-    return db.query(Transaction).filter(Transaction.prediction_id == prediction_id).first()
+    return (
+        db.query(Transaction)
+        .filter(Transaction.prediction_id == prediction_id, Transaction.type == TransactionType.DEBIT)
+        .first()
+    )
 
 
 def _lock_balance(db: Session, user_id: int) -> Balance:
     balance = db.query(Balance).filter(Balance.user_id == user_id).with_for_update().first()
     if balance is None:
-        balance = Balance(user_id=user_id, credits=0)
-        db.add(balance)
-        db.flush()
+        try:
+            with db.begin_nested():
+                balance = Balance(user_id=user_id, credits=0)
+                db.add(balance)
+                db.flush()
+        except IntegrityError:
+            balance = db.query(Balance).filter(Balance.user_id == user_id).with_for_update().first()
+    if balance is None:
+        raise RuntimeError(f"Balance row missing for user {user_id} after insert race")
     return balance
 
 
@@ -89,22 +100,33 @@ def refund_prediction_if_debited(
     *,
     commit: bool = True,
 ) -> bool:
-    """If a debit exists for this prediction, issue a matching credit refund (idempotent)."""
+    """If a debit exists for this prediction, issue a matching refund row (idempotent via DB uniqueness)."""
     if get_prediction_debit_transaction(db, prediction.id) is None:
         return False
-    refund_desc = f"Refund: prediction #{prediction.id}"
-    existing = (
+    existing_refund = (
         db.query(Transaction)
         .filter(
-            Transaction.user_id == prediction.user_id,
-            Transaction.type == TransactionType.CREDIT,
-            Transaction.description == refund_desc,
+            Transaction.prediction_id == prediction.id,
+            Transaction.type == TransactionType.REFUND,
         )
         .first()
     )
-    if existing is not None:
+    if existing_refund is not None:
         return False
-    add_credits(db, prediction.user_id, prediction.credits_spent, description=refund_desc, commit=commit)
+    balance = _lock_balance(db, prediction.user_id)
+    balance.credits += prediction.credits_spent
+    refund_desc = f"Refund: prediction #{prediction.id}"
+    transaction = Transaction(
+        user_id=prediction.user_id,
+        amount=prediction.credits_spent,
+        type=TransactionType.REFUND,
+        prediction_id=prediction.id,
+        description=refund_desc,
+    )
+    db.add(transaction)
+    billing_transactions_total.labels(type="refund").inc()
+    if commit:
+        db.commit()
     return True
 
 

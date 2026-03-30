@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.billing import ensure_balance
@@ -33,7 +34,11 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
     db.add(user)
     db.flush()
     ensure_balance(db, user.id)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered") from None
     db.refresh(user)
 
     return Token(

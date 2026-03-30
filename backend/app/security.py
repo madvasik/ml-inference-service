@@ -1,4 +1,7 @@
 from datetime import datetime, timedelta, timezone
+import secrets
+
+import logging
 
 import bcrypt
 from fastapi import Depends, HTTPException, status
@@ -11,13 +14,16 @@ from backend.app.db import get_db
 from backend.app.models import User, UserRole
 
 
+logger = logging.getLogger(__name__)
+
 security = HTTPBearer(auto_error=False)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
         return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
-    except Exception:
+    except Exception as exc:
+        logger.warning("Unexpected error during password verification: %s", exc, exc_info=True)
         return False
 
 
@@ -112,3 +118,19 @@ async def get_current_admin(current_user: User = Depends(get_current_user)) -> U
             detail="Not enough permissions. Admin access required.",
         )
     return current_user
+
+
+async def verify_metrics_access(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    db: Session = Depends(get_db),
+) -> None:
+    """Allow GET /metrics with shared PROMETHEUS_SCRAPE_TOKEN or a valid admin JWT."""
+    token = (settings.prometheus_scrape_token or "").strip()
+    if token and credentials and secrets.compare_digest(credentials.credentials.strip(), token):
+        return
+    user = await get_current_user(credentials, db)
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions. Admin access required.",
+        )

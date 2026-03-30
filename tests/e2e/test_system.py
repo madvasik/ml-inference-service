@@ -38,7 +38,18 @@ def test_live_root_endpoint():
 
 @pytest.mark.e2e
 def test_live_metrics_endpoint_exposes_counters():
-    resp = _request("GET", "/metrics")
+    admin_email = os.getenv("E2E_ADMIN_EMAIL")
+    admin_password = os.getenv("E2E_ADMIN_PASSWORD")
+    if not admin_email or not admin_password:
+        pytest.skip("Set E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD to authenticate GET /metrics")
+    login = _request(
+        "POST",
+        "/api/v1/auth/login",
+        json={"email": admin_email, "password": admin_password},
+    )
+    assert login.status_code == 200
+    token = login.json()["access_token"]
+    resp = _request("GET", "/metrics", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
     body = resp.text
     assert "prediction_requests_total" in body
@@ -64,7 +75,22 @@ def test_live_docs_and_openapi():
 
 @pytest.mark.e2e
 def test_live_monitoring_stack_is_wired():
-    backend_metrics = requests.get(f"{BASE_URL}/metrics", timeout=10)
+    admin_email = os.getenv("E2E_ADMIN_EMAIL")
+    admin_password = os.getenv("E2E_ADMIN_PASSWORD")
+    if not admin_email or not admin_password:
+        pytest.skip("Set E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD to authenticate GET /metrics")
+    login = requests.post(
+        f"{BASE_URL}/api/v1/auth/login",
+        json={"email": admin_email, "password": admin_password},
+        timeout=10,
+    )
+    assert login.status_code == 200
+    token = login.json()["access_token"]
+    backend_metrics = requests.get(
+        f"{BASE_URL}/metrics",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
     assert backend_metrics.status_code == 200
     assert "prediction_requests_total" in backend_metrics.text
 

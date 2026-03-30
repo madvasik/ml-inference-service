@@ -2,6 +2,8 @@ import asyncio
 import logging
 import json
 
+from tests.helpers import auth_headers
+
 from backend.app import db as db_module
 from backend.app.config import Settings
 from backend.app.main import general_exception_handler
@@ -27,8 +29,8 @@ def test_health_endpoint_reports_database_failure(client, monkeypatch):
     assert response.json()["components"]["database"] == "error"
 
 
-def test_metrics_endpoint_is_available(client):
-    response = client.get("/metrics")
+def test_metrics_endpoint_is_available(client, access_token_for, admin_user):
+    response = client.get("/metrics", headers=auth_headers(access_token_for(admin_user)))
 
     assert response.status_code == 200
     assert "text/plain" in response.headers["content-type"]

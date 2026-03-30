@@ -5,6 +5,7 @@ import logging
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from sqlalchemy import exists
 from sqlalchemy.orm import Session
 
 from backend.app.config import settings
@@ -146,7 +147,7 @@ def delete_model(model_id: int, current_user: User = Depends(get_current_user), 
     if model is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not found")
 
-    has_predictions = db.query(Prediction.id).filter(Prediction.model_id == model.id).first() is not None
+    has_predictions = db.query(exists().where(Prediction.model_id == model.id)).scalar()
     if has_predictions:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

@@ -64,12 +64,18 @@ celery_app.conf.update(
 
 
 def _mark_prediction_failed(db: Session, prediction_id: int, reason: str) -> Prediction | None:
+    """Mark prediction failed and refund debited credits (terminal failure only).
+
+    For OperationalError, must only be called after Celery retries are exhausted — never
+    while self.retry() can still run, or the user is refunded while the task may succeed
+    on retry (DEBIT remains, charge_prediction is idempotent → free prediction).
+    """
     prediction = db.query(Prediction).filter(Prediction.id == prediction_id).first()
     if prediction is None:
         return None
     prediction.status = PredictionStatus.FAILED
     prediction.failure_reason = reason
-    prediction.completed_at = None
+    prediction.completed_at = datetime.now(timezone.utc)
     refund_prediction_if_debited(db, prediction, commit=False)
     db.commit()
     return prediction
@@ -215,7 +221,8 @@ def start_metrics_server():
 
 
 def run_worker() -> int:
-    os.environ.setdefault("PROMETHEUS_MULTIPROC_DIR", "/tmp/prometheus_multiproc_dir")
+    prom_dir = settings.prometheus_multiproc_dir or os.getenv("PROMETHEUS_MULTIPROC_DIR") or "/tmp/prometheus_multiproc_dir"
+    os.environ.setdefault("PROMETHEUS_MULTIPROC_DIR", prom_dir)
     prepare_multiprocess_dir()
 
     if os.getenv("ENABLE_METRICS_SERVER", "false").lower() == "true":

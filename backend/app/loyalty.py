@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.metrics import loyalty_users_total
@@ -80,16 +80,19 @@ def recalculate_loyalty_tiers(db: Session, reference_time: datetime | None = Non
         .all()
     )
 
-    users = db.query(User).all()
-    for user in users:
+    processed = 0
+    for user in db.scalars(select(User).execution_options(yield_per=500)):
         snapshot = resolve_tier_for_count(rules, stats.get(user.id, 0))
+        tier_changed = snapshot.tier != user.loyalty_tier or snapshot.discount_percent != user.loyalty_discount_percent
         user.loyalty_tier = snapshot.tier
         user.loyalty_discount_percent = snapshot.discount_percent
-        user.loyalty_updated_at = datetime.now(timezone.utc)
+        if tier_changed:
+            user.loyalty_updated_at = datetime.now(timezone.utc)
+        processed += 1
 
     db.commit()
     refresh_loyalty_metrics(db)
-    return len(users)
+    return processed
 
 
 def refresh_loyalty_metrics(db: Session) -> None:

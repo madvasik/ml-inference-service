@@ -42,7 +42,7 @@ def test_live_auth_refresh_and_profile_flow():
     assert refresh.json()["refresh_token"]
 
     unauthorized = _request("GET", "/api/v1/users/me")
-    assert unauthorized.status_code == 403
+    assert unauthorized.status_code == 401
 
 
 @pytest.mark.e2e

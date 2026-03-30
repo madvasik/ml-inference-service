@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 1000
     rate_limit_per_user_per_minute: int = 100
 
+    trusted_proxy_headers: bool = False
+
+    prometheus_multiproc_dir: str | None = None
+
+    prometheus_scrape_token: str | None = None
+
     cors_origins: str = "*"
     max_upload_size_mb: int = 100
     log_json_format: bool = False
@@ -80,21 +86,23 @@ class Settings(BaseSettings):
             raise ValueError("SECRET_KEY must be at least 32 characters long and must not use a known placeholder")
         return value
 
-    @field_validator("initial_admin_password")
-    @classmethod
-    def validate_initial_admin_password(cls, value: str | None) -> str | None:
-        if value is None:
-            return value
-
-        weak_passwords = {"admin123", "password", "admin", "changeme"}
-        if len(value) < 12 or value in weak_passwords:
-            raise ValueError("INITIAL_ADMIN_PASSWORD must be at least 12 characters long and not use a common default")
-        return value
-
     @model_validator(mode="after")
     def validate_initial_admin_credentials(self) -> "Settings":
         if bool(self.initial_admin_email) != bool(self.initial_admin_password):
             raise ValueError("INITIAL_ADMIN_EMAIL and INITIAL_ADMIN_PASSWORD must be set together")
+        pwd = self.initial_admin_password
+        if pwd is None:
+            return self
+        if self.debug:
+            if not pwd.strip():
+                raise ValueError("INITIAL_ADMIN_PASSWORD cannot be empty")
+            return self
+        weak_passwords = {"admin123", "password", "admin", "changeme"}
+        if len(pwd) < 12 or pwd in weak_passwords:
+            raise ValueError(
+                "INITIAL_ADMIN_PASSWORD must be at least 12 characters long and not use a common default "
+                "(or set DEBUG=True for local weak passwords)"
+            )
         return self
 
 

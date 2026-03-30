@@ -99,7 +99,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             except Exception:
                 pass
 
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = _client_ip_for_rate_limit(request)
         return f"ip:{client_ip}", False
 
     async def dispatch(self, request: Request, call_next):
@@ -143,3 +143,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         response.headers["X-RateLimit-Remaining"] = str(remaining)
         response.headers["X-RateLimit-Reset"] = str(reset_at)
         return response
+
+
+def _client_ip_for_rate_limit(request: Request) -> str:
+    if settings.trusted_proxy_headers:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+        real_ip = request.headers.get("x-real-ip")
+        if real_ip:
+            return real_ip.strip()
+    return request.client.host if request.client else "unknown"

@@ -5,11 +5,15 @@ global:
     monitor: 'ml-inference-service'
 
 scrape_configs:
+  # Backend /metrics accepts Bearer admin JWT or PROMETHEUS_SCRAPE_TOKEN (see docker-compose).
   - job_name: 'ml-inference-service-backend'
     static_configs:
       - targets: ['backend:8000']
     metrics_path: '/metrics'
     scrape_interval: 15s
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/metrics_token
     
   - job_name: 'ml-inference-service-celery'
     static_configs:

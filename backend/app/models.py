@@ -28,6 +28,7 @@ class PaymentStatus(str, enum.Enum):
 class TransactionType(str, enum.Enum):
     CREDIT = "credit"
     DEBIT = "debit"
+    REFUND = "refund"
 
 
 class PredictionStatus(str, enum.Enum):
@@ -144,6 +145,6 @@ class Transaction(Base):
     payment = relationship("Payment", backref="transactions")
 
     __table_args__ = (
-        UniqueConstraint("prediction_id", name="uq_transactions_prediction_id"),
+        UniqueConstraint("prediction_id", "type", name="uq_transactions_prediction_id_type"),
         UniqueConstraint("payment_id", name="uq_transactions_payment_id"),
     )

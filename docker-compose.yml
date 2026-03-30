@@ -19,6 +19,7 @@ x-app-env: &app-env
   INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:?INITIAL_ADMIN_EMAIL must be set}
   INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:?INITIAL_ADMIN_PASSWORD must be set}
   INITIAL_ADMIN_CREDITS: ${INITIAL_ADMIN_CREDITS:-10000}
+  PROMETHEUS_SCRAPE_TOKEN: ${PROMETHEUS_SCRAPE_TOKEN:-}
 
 services:
   postgres:
@@ -137,12 +138,18 @@ services:
     container_name: ml_service_prometheus
     ports:
       - "9090:9090"
+    env_file:
+      - .env
     volumes:
       - ./infra/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
     command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /etc/prometheus/secrets
+        printf '%s' "$$PROMETHEUS_SCRAPE_TOKEN" > /etc/prometheus/secrets/metrics_token
+        exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus
     depends_on:
       - backend
     healthcheck:

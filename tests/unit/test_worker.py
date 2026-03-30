@@ -2,7 +2,10 @@ from unittest.mock import Mock, patch
 
 from datetime import datetime, timezone
 
-from backend.app.models import Balance, Prediction, PredictionStatus, Transaction
+from sqlalchemy.exc import OperationalError
+
+from backend.app.billing import charge_prediction
+from backend.app.models import Balance, Prediction, PredictionStatus, Transaction, TransactionType
 from backend.app.worker import execute_prediction, recalculate_monthly_loyalty
 
 
@@ -70,6 +73,29 @@ def test_worker_keeps_credits_when_model_load_fails(_mock_load_model, db_session
     assert prediction.failure_reason == "execution_error"
     assert balance.credits == 1000
     assert db_session.query(Transaction).count() == 0
+
+
+@patch("backend.app.worker.load_model")
+@patch("backend.app.worker.predict", side_effect=OperationalError("stmt", None, None))
+def test_operational_error_before_max_retries_does_not_refund(
+    _mock_predict, _mock_load, db_session, test_user, test_ml_model
+):
+    prediction = _create_prediction(db_session, test_user, test_ml_model)
+    charge_prediction(db_session, prediction)
+    db_session.commit()
+    db_session.refresh(prediction)
+
+    with patch("backend.app.worker.refund_prediction_if_debited") as mock_refund:
+        with patch.object(execute_prediction, "retry", side_effect=RuntimeError("retry_scheduled")):
+            with patch.object(execute_prediction.request, "retries", 0):
+                with patch.object(execute_prediction, "max_retries", 3):
+                    try:
+                        execute_prediction.run(prediction_id=prediction.id)
+                    except RuntimeError as exc:
+                        if str(exc) != "retry_scheduled":
+                            raise
+    mock_refund.assert_not_called()
+    assert db_session.query(Transaction).filter(Transaction.type == TransactionType.REFUND).count() == 0
 
 
 def test_monthly_loyalty_task_recalculates_users(db_session, test_user, test_ml_model):
