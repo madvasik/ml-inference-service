@@ -1,382 +1,191 @@
 # ML Inference Service
 
-Сервис для загрузки моделей и получения асинхронных ML-предсказаний с оплатой кредитами.
+Масштабируемый ML-сервис (**`ml_inference_service`**): предсказания по загружаемым моделям **scikit-learn**, внутренняя валюта (**кредиты**), асинхронная обработка (**Celery + Redis**), дашборд **Streamlit**, мониторинг **Prometheus + Grafana**.
 
-## Цель и задачи
+Краткий бизнес-контекст и финмодель: **[BUSINESS_PLAN.md](BUSINESS_PLAN.md)**.
 
-Цель проекта: дать пользователю API, через который он может загрузить свою модель, отправить асинхронный inference-запрос и заплатить кредитами только за успешный результат.
+### Структура репозитория
 
-Задачи проекта:
+| Путь | Назначение |
+|------|------------|
+| `src/ml_inference_service/` | Устанавливаемый Python-пакет: FastAPI, SQLAlchemy-модели, Celery |
+| `streamlit/` | Дашборд Streamlit |
+| `alembic/` | Миграции Alembic |
+| `docker/` | Скрипты entrypoint, Prometheus, Grafana |
+| `scripts/` | Утилиты и демо-сценарии |
+| `tests/` | pytest |
 
-- регистрация, аутентификация и роли пользователей (JWT);
-- загрузка `pkl`-моделей и запуск предсказаний через REST API;
-- асинхронная обработка запросов через Celery + Redis;
-- биллинг с атомарными транзакциями и историей операций;
-- loyalty/discount механика с ежемесячным пересчётом;
-- аналитический dashboard для администратора (Streamlit);
-- мониторинг через Prometheus и Grafana;
-- автодокументация Swagger/OpenAPI;
-- тестовое покрытие выше 70%.
+Импорты в коде — `ml_inference_service.*` (пакет собирается из каталога `src/`).
 
-## Архитектура
+---
 
-Компоненты:
+## 1. Цель проекта
 
-| Компонент | Технология | Назначение |
-|-----------|-----------|------------|
-| backend | FastAPI | REST API, бизнес-логика, JWT, Swagger |
-| postgres | PostgreSQL 15 | Основная БД |
-| redis | Redis 7 | Брокер и result backend Celery |
-| celery | Celery worker | Асинхронное выполнение предсказаний |
-| celery-beat | Celery beat | Ежемесячный пересчёт loyalty tiers |
-| dashboard | Streamlit | Админ-панель с аналитикой |
-| prometheus | Prometheus | Сбор метрик |
-| grafana | Grafana | Визуализация метрик |
+Дать пользователям API для **загрузки своих моделей** и **выполнения предсказаний** с **автоматическим списанием кредитов** только за **успешно завершённые** задачи; API остаётся отзывчивым за счёт очереди задач и горизонтального масштабирования воркеров.
 
-Принципы архитектуры:
+---
 
-- все ORM-модели в одном файле `backend/app/models.py`;
-- все Pydantic-схемы в одном файле `backend/app/schemas.py`;
-- HTTP-роуты в `backend/app/api/*.py` (один файл на домен);
-- биллинг сосредоточен в `backend/app/billing.py`;
-- асинхронная логика в `backend/app/worker.py`.
+## 2. Функциональные требования
 
-## Используемые технологии
+### Пользовательский блок
+- **Регистрация** и **вход** (`POST /api/auth/register`, `POST /api/auth/login`), выдача **JWT**.
+- Роли: **`user`** (по умолчанию), **`admin`** (создание промокодов и др.; назначение вручную в БД, см. ниже).
+- **Личный кабинет** на **Streamlit**: баланс, статистика, mock-пополнение, модели, предсказание, промокоды.
 
-- Python 3.11+, FastAPI, SQLAlchemy, Alembic
-- PostgreSQL, Redis, Celery
-- Scikit-learn
-- Streamlit
-- Prometheus, Grafana
-- Docker / Docker Compose
-- Pytest / pytest-cov
+### ML-блок
+- Загрузка артефакта **scikit-learn** (`.joblib` / `.pkl`), валидация наличия `predict`.
+- **Асинхронные** предсказания: `POST /api/predict` ставит задачу, результат — `GET /api/jobs/{id}` (воркер **Celery** не блокирует HTTP-запросы API).
 
-## Структура проекта
+### Биллинговый блок
+- Учёт **баланса** в кредитах, журнал **`credit_transactions`**.
+- Списание **после успешного** инференса, с **идемпотентностью** (повтор не списывает дважды).
+- **Пополнение в учебной сборке**: `POST /api/billing/mock-topup` с секретом `MOCK_TOPUP_SECRET` (имитация платежа). Интеграция с реальным платёжным шлюзом вынесена в продуктовую дорожку (см. [BUSINESS_PLAN.md](BUSINESS_PLAN.md)).
 
-```text
-backend/
-  alembic/                    # миграции БД
-  app/
-    api/                      # HTTP endpoints
-      admin.py                  # /admin (только для ADMIN)
-      auth.py                   # /auth (register, login, refresh)
-      billing.py                # /billing (balance, payments, transactions)
-      models.py                 # /models (upload, list, get, delete)
-      predictions.py            # /predictions (create, list, get)
-      system.py                 # /, /health, /metrics
-      users.py                  # /users/me
-    billing.py                # кредиты, платежи, атомарные транзакции
-    config.py                 # env-настройки (pydantic-settings)
-    db.py                     # SQLAlchemy engine, SessionLocal, health probes
-    log_config.py             # логирование (text / JSON)
-    loyalty.py                # tiers, скидки, monthly recalculation
-    main.py                   # точка входа FastAPI
-    metrics.py                # Prometheus-метрики
-    middleware.py             # rate limiting и request-метрики
-    ml.py                     # загрузка, валидация и inference моделей
-    models.py                 # все SQLAlchemy модели (7 таблиц)
-    schemas.py                # все Pydantic схемы
-    security.py               # JWT, bcrypt, get_current_user/admin
-    worker.py                 # Celery app, задачи, beat schedule
-dashboard/
-  api_client.py               # HTTP клиент к backend API
-  config.py                   # настройки dashboard
-  main.py                     # вход в Streamlit
-  views.py                    # вкладки и графики
-infra/
-  docker/                     # Dockerfiles (backend, celery, streamlit)
-  monitoring/                 # Prometheus config + Grafana provisioning
-tests/
-  unit/                       # 44 теста: API, billing, ML, worker, loyalty
-  integration/                # 3 теста: полный workflow + failure modes
-  e2e/                        # 33 теста: живой docker-стек по доменам
-tools/
-  smoke.py                    # локальный smoke-тест без docker
-docker-compose.yml            # запуск всего стека
-```
+### Аналитический блок
+- **Streamlit**: сводка по задачам, транзакции, расход кредитов.
+- **GET /api/analytics/summary** для агрегатов по пользователю.
 
-## Схема взаимодействия компонентов
+### API
+- **REST API**, автоматическая документация **OpenAPI/Swagger**: **`/docs`**, **`/redoc`**.
 
-```
-Пользователь
-    |
-    v
-[FastAPI backend] -- JWT --> [PostgreSQL]
-    |                              ^
-    | (POST /predictions)          |
-    v                              |
-[Redis] --> [Celery worker] -------+
-                |
-                v
-         [ML model file]
-                |
-                v
-[Prometheus] <-- metrics -- [backend + worker]
-    |
-    v
-[Grafana dashboard]
-```
+---
 
-1. Пользователь регистрируется/логинится -> получает `access_token`.
-2. Пополняет баланс кредитов через billing API.
-3. Загружает `model.skops` -> backend сохраняет файл и метаданные.
-4. `POST /predictions` создаёт запись и отправляет задачу в Celery.
-5. Celery worker загружает модель, считает результат, списывает кредиты **только после успеха**.
-6. Результат доступен через `GET /predictions/{prediction_id}`.
-7. Prometheus собирает метрики, Grafana визуализирует.
+## 3. Технологический стек
 
-## Как запустить проект
+| Компонент | Технология |
+|-----------|------------|
+| Язык | Python 3.11+ |
+| Web / API | FastAPI, Uvicorn |
+| ML | scikit-learn, joblib |
+| БД | PostgreSQL, SQLAlchemy 2, Alembic |
+| Очередь | Celery, Redis |
+| UI | Streamlit |
+| Контейнеры | Docker, Docker Compose |
+| Мониторинг | Prometheus, Grafana, `prometheus-fastapi-instrumentator` |
+| Тесты | pytest, pytest-cov (порог покрытия `ml_inference_service` **≥ 70%**, см. `pyproject.toml`) |
 
-### Полный стек через Docker Compose
+Секреты и URL БД/Redis задаются через **переменные окружения** (шаблон: [`.env.example`](.env.example)).
+
+---
+
+## 4. Этапы реализации (соответствие репозитория)
+
+| Этап | Содержание |
+|------|------------|
+| Проектирование | Схема БД (Alembic), маршруты в `ml_inference_service/api/`, описание в README и Swagger |
+| Backend | Аутентификация, пользователи, биллинг, ML, промокоды, аналитика |
+| ML-интеграция | Задачи `ml_inference_service/tasks/predict.py`, брокер Redis, воркер в Docker Compose |
+| Биллинг | `ml_inference_service/services/billing.py`, транзакции, дебет после успеха |
+| Интерфейс | `streamlit/dashboard.py` |
+| Инфраструктура | `docker-compose.yml`, Prometheus, Grafana provisioning |
+| Тесты и документация | `tests/`, этот README, бизнес-план |
+
+---
+
+## 5. Промокоды
+
+- Типы: **фиксированные кредиты** (`fixed_credits`), **процент бонуса к следующему пополнению** (`percent_next_topup`).
+- Ограничения: **срок действия** (`expires_at`), **лимит активаций** (`max_activations` — глобально по коду).
+- Повторная активация **одним пользователем** одного и того же кода блокируется записью в **`promocode_redemptions`** (ответ API **409**).
+- Создание кодов: **`POST /api/promocodes/admin`** (только **admin**). В миграции зашит демо-код **`WELCOME`** (начисление кредитов для проверок и сценария `scripts/demo_user_flow.py`).
+
+---
+
+## 6. Критерии приёмки (чек-лист)
+
+| Критерий | Реализация |
+|----------|------------|
+| JWT, роли | Есть (`ml_inference_service/deps.py`, JWT в `ml_inference_service/security.py`) |
+| Атомарность / идемпотентность списаний | Заложено в сервисе биллинга и задаче предсказания |
+| ML асинхронно (не блокирует API) | Celery-воркер обрабатывает задачи вне процесса API |
+| Swagger для эндпоинтов | FastAPI автоматически |
+| Запуск одной командой | `docker compose up --build` (после `cp .env.example .env`) |
+| Grafana / метрики | Дашборд «ML Inference API», метрики с `/metrics` |
+| Покрытие тестами **> 70%** | `pytest --cov=ml_inference_service` (порог задан в `pyproject.toml`) |
+| Краткий бизнес-план | [BUSINESS_PLAN.md](BUSINESS_PLAN.md) |
+
+### Рекомендации для разработки (из ТЗ)
+
+- **Сбой при списании**: транзакции БД и идемпотентные ключи; при ошибке до `commit` откат без списания.
+- **Секреты**: только env / `.env`, не коммитить ключи (см. `.env.example`).
+- **Документация биллинга**: README, [BUSINESS_PLAN.md](BUSINESS_PLAN.md), комментарии в `ml_inference_service/services/billing.py`.
+
+---
+
+## Запуск (Docker)
 
 ```bash
 cp .env.example .env
-docker compose up -d --build
+docker compose up --build
 ```
 
-После запуска:
+### Ссылки после `docker compose` (порты на хосте смотрите в `docker-compose.yml`)
 
-| Сервис | URL |
-|--------|-----|
-| API | http://localhost:8000 |
-| Swagger | http://localhost:8000/docs |
-| ReDoc | http://localhost:8000/redoc |
-| Dashboard | http://localhost:8501 |
-| Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3000 (логин/пароль: переменные `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`, по умолчанию `admin`/`admin`) |
+| Сервис | URL | Примечание |
+|--------|-----|------------|
+| **API (Swagger)** | http://localhost:8001/docs | при другом `ports` у `api` замените порт |
+| **Метрики приложения** | http://localhost:8001/metrics | текст для Prometheus (не UI Grafana) |
+| **Streamlit** | http://localhost:8502 | регистрация, вход, статистика, mock-пополнение, модели, предсказание, промокод |
+| **Prometheus UI** | http://localhost:19090 | запросы PromQL, targets |
+| **Grafana** | http://localhost:3001 | логин `admin`, пароль `GRAFANA_ADMIN_PASSWORD` или `admin` |
+| **PostgreSQL** | `localhost:5433` | внутри сети compose: `postgres:5432` |
 
-### Локальная smoke-проверка без Docker
+В **Grafana**: **Dashboards** → **ML Inference API** — пользователи, успешные предсказания, модели, успешность предсказаний (success rate).
+
+Страница `/metrics` — сырой экспорт; графики — в **Grafana** или **Prometheus UI**.
+
+**Streamlit:** не используйте выдуманные `admin/admin`. Зарегистрируйте пользователя на вкладке **«Регистрация»**, затем войдите на **«Вход»**.
+
+---
+
+## Локальная разработка
+
+Нужны PostgreSQL и Redis. Миграции:
 
 ```bash
-make smoke
+pip install -e ".[dev,streamlit]"
+export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ml_inference_service
+alembic upgrade head
+uvicorn ml_inference_service.main:app --reload
 ```
 
-Поднимает backend на SQLite с eager Celery и проверяет сценарий register -> payment -> upload -> predict.
-
-## Основные API endpoints
-
-**Auth:**
-- `POST /api/v1/auth/register` — регистрация
-- `POST /api/v1/auth/login` — вход, возвращает access + refresh token
-- `POST /api/v1/auth/refresh` — обновление токена
-
-**Users:**
-- `GET /api/v1/users/me` — текущий пользователь
-
-**Models:**
-- `POST /api/v1/models/upload` — загрузка `.skops` модели
-- `GET /api/v1/models` — список моделей пользователя
-- `GET /api/v1/models/{model_id}` — детали модели
-- `DELETE /api/v1/models/{model_id}` — удаление модели
-
-**Predictions:**
-- `POST /api/v1/predictions` — создание предсказания (202 Accepted)
-- `GET /api/v1/predictions` — список предсказаний
-- `GET /api/v1/predictions/{prediction_id}` — статус и результат
-
-**Billing:**
-- `GET /api/v1/billing/balance` — текущий баланс
-- `POST /api/v1/billing/payments` — пополнение (mock-платёж)
-- `GET /api/v1/billing/payments` — история платежей
-- `GET /api/v1/billing/transactions` — история транзакций
-
-**Admin (требуется роль ADMIN):**
-- `GET /api/v1/admin/users` — все пользователи
-- `GET /api/v1/admin/predictions` — все предсказания
-- `GET /api/v1/admin/payments` — все платежи
-- `GET /api/v1/admin/transactions` — все транзакции
-
-**System:**
-- `GET /` — корневой endpoint
-- `GET /health` — health check (БД + схема)
-- `GET /metrics` — Prometheus метрики
-- `POST /api/v1/metrics/update-active-users` — пересчёт метрик активных пользователей (требуется роль ADMIN)
-
-## Как пользоваться API
-
-Типовой сценарий:
+Воркер Celery:
 
 ```bash
-# 1. Регистрация
-curl -X POST http://localhost:8000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@example.com","password":"password123"}'
-
-# 2. Пополнение баланса
-curl -X POST http://localhost:8000/api/v1/billing/payments \
-  -H "Authorization: Bearer <ACCESS_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{"amount":50}'
-
-# 3. Загрузка модели
-curl -X POST http://localhost:8000/api/v1/models/upload \
-  -H "Authorization: Bearer <ACCESS_TOKEN>" \
-  -F "model_name=my-model" \
-  -F 'feature_names=["feature1","feature2"]' \
-  -F "file=@model.skops"
-
-# 4. Создание предсказания
-curl -X POST http://localhost:8000/api/v1/predictions \
-  -H "Authorization: Bearer <ACCESS_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{"model_id":1,"input_data":{"feature1":1.0,"feature2":2.0}}'
-
-# 5. Проверка результата
-curl http://localhost:8000/api/v1/predictions/1 \
-  -H "Authorization: Bearer <ACCESS_TOKEN>"
+celery -A ml_inference_service.celery_app.celery_app worker --loglevel=info
 ```
 
-## Как устроен биллинг
-
-### Сущности
-
-- `balances` — текущий баланс пользователя;
-- `payments` — пополнения баланса;
-- `transactions` — история начислений (credit) и списаний (debit);
-- `predictions.credits_spent` — snapshot итоговой цены конкретного запроса.
-
-### Правила
-
-- `1 amount = 1 credit`;
-- пополнение создаёт `payment` + `credit transaction` + обновляет `balance`;
-- списание за prediction выполняется **при успешном `POST /predictions`** (в одной транзакции с проверкой баланса через `with_for_update`); воркер не дублирует списание, если debit для данного `prediction_id` уже существует (идемпотентность).
-- транзакция по prediction уникальна по `prediction_id` — повторный запуск воркера не спишет кредиты второй раз.
-
-### Атомарность и обработка ошибок
-
-- `create_payment()` выполняет payment + transaction + balance update в одной DB-транзакции. При ошибке — полный rollback.
-- `POST /predictions` атомарно проверяет баланс и создаёт debit; параллельные запросы сериализуются блокировкой строки баланса.
-- Worker при списании также использует `with_for_update()` для сценариев без предварительного debit (напрямую из БД).
-- Если очередь недоступна при постановке задачи — prediction помечается `failed` с причиной `queue_unavailable`, выполняется **возврат кредитов** (refund), если debit уже был создан.
-- Если inference падает — prediction получает `failed`, при наличии debit выполняется **возврат кредитов**.
-- Если к моменту списания в воркере кредитов не хватает (редкий случай без предварительного debit) — prediction получает `failed` с причиной `insufficient_credits`.
-
-## Как работает асинхронная обработка
-
-- HTTP API **не делает inference** внутри запроса.
-- `POST /predictions` валидирует вход, сохраняет snapshot цены, **списывает кредиты** и ставит задачу в Celery.
-- Celery worker (`execute_prediction` в `worker.py`) загружает модель, делает predict; повторное списание не выполняется, если API уже создал debit.
-- Celery beat раз в месяц запускает `recalculate_monthly_loyalty`.
-
-## Loyalty / Discount система
-
-Уровни: `none` -> `bronze` -> `silver` -> `gold`.
-
-| Уровень | Порог (предсказаний/месяц) | Скидка |
-|---------|---------------------------|--------|
-| Bronze | 50+ | 5% |
-| Silver | 200+ | 10% |
-| Gold | 500+ | 20% |
-
-Особенности:
-
-- Правила хранятся в таблице `loyalty_tier_rules` (не захардкожены).
-- При создании prediction фиксируются `base_cost`, `discount_percent`, `discount_amount`, `credits_spent`.
-- Пересчёт выполняется фоновой задачей 1-го числа каждого месяца в 00:05 UTC.
-- Подсчитываются только COMPLETED предсказания за предыдущий месяц.
-
-## Мониторинг (Prometheus + Grafana)
-
-Метрики собираются с двух источников:
-- backend: `http://backend:8000/metrics`
-- celery worker: `http://celery:9091/metrics`
-
-Основные метрики:
-
-| Метрика | Тип | Описание |
-|---------|-----|----------|
-| `prediction_requests_total` | Counter | Предсказания по статусу |
-| `prediction_latency_seconds` | Histogram | Время выполнения |
-| `prediction_errors_total` | Counter | Ошибки по типу |
-| `billing_transactions_total` | Counter | Транзакции (credit/debit) |
-| `payments_total` | Counter | Платежи по статусу |
-| `active_users` | Gauge | Активные пользователи (15 мин) |
-| `loyalty_users_total` | Gauge | Пользователи по tier |
-
-В Grafana provisioned dashboard с панелями: throughput, latency p95, success rate, billing, loyalty distribution.
-
-## Как запускать тесты
+Streamlit (из корня репозитория, после `pip install -e ".[streamlit]"`):
 
 ```bash
-make test          # unit + integration тесты с coverage
-make smoke         # smoke-тест (SQLite + eager Celery, без Docker)
-make e2e           # e2e-тесты (требует docker compose up)
+streamlit run streamlit/dashboard.py
 ```
 
-## Покрытие тестами
+### E2E-сценарий (ручной прогон API)
 
-Последний прогон `pytest`:
+```bash
+export MOCK_TOPUP_SECRET=dev-mock-topup-secret   # как в API
+python scripts/demo_user_flow.py --base-url http://localhost:8001/api
+```
 
-- **51 unit/integration тестов + 33 e2e теста**
-- **Покрытие: 86.83%** (требование ТЗ: > 70%)
+Скрипт: регистрация → mock-пополнение → модель → предсказания → повторный вход → промокод **WELCOME** (дважды: успех и ожидаемая ошибка **409**).
 
-Тесты организованы в три уровня:
+---
 
-**Unit тесты (`tests/unit/`)** — 48 тестов, 9 файлов:
+## Роли
 
-| Файл | Что проверяет |
-|------|--------------|
-| `test_app.py` | root, health, metrics, OpenAPI, logging |
-| `test_auth_api.py` | register, login, refresh, JWT валидация, rate limit |
-| `test_admin_api.py` | admin endpoints, проверка роли |
-| `test_billing.py` | пополнение, rollback, идемпотентность, валидация |
-| `test_loyalty.py` | правила, месячный пересчёт, discount snapshot |
-| `test_ml.py` | загрузка, валидация, predict, тип модели, features |
-| `test_models_api.py` | upload, list, get, delete, изоляция по owner |
-| `test_predictions_api.py` | создание, баланс, queue failure, изоляция |
-| `test_worker.py` | успешный debit, insufficient credits, model failure |
+По умолчанию регистрация создаёт роль `user`. Администратора:
 
-**Integration тесты (`tests/integration/`)** — 3 теста:
+```sql
+UPDATE users SET role = 'admin' WHERE email = 'you@example.com';
+```
 
-| Файл | Что проверяет |
-|------|--------------|
-| `test_workflow.py` | полный workflow, queue failure, worker failure |
+---
 
-**E2e тесты (`tests/e2e/`)** — 33 теста, 6 файлов (требуют `docker compose up`):
+## Тесты
 
-| Файл | Что проверяет |
-|------|--------------|
-| `test_system.py` | health, root, metrics, docs, monitoring stack, Grafana, Streamlit |
-| `test_auth.py` | auth flow, дубликаты, wrong password, токены, protected endpoints, профиль |
-| `test_billing.py` | payments, валидация, накопление |
-| `test_models.py` | CRUD, валидация (non-skops, invalid skops, wrong extension) |
-| `test_predictions.py` | полный workflow, zero balance, foreign model, scoping, multiple debits |
-| `test_admin.py` | platform data, фильтрация по user, 404, access control |
+```bash
+pytest --cov=ml_inference_service --cov-report=term-missing
+```
 
-## ENV переменные
-
-| Переменная | По умолчанию | Описание |
-|------------|-------------|----------|
-| `DATABASE_URL` | postgresql://... | Строка подключения к БД |
-| `SECRET_KEY` | - | Обязательный JWT-секрет длиной от 32 символов |
-| `ALGORITHM` | HS256 | Алгоритм JWT |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | 30 | Время жизни access token |
-| `REFRESH_TOKEN_EXPIRE_DAYS` | 7 | Время жизни refresh token |
-| `PREDICTION_COST` | 10 | Базовая стоимость предсказания |
-| `DEBUG` | False | Debug-режим |
-| `ML_MODELS_DIR` | var/ml_models | Директория хранения моделей |
-| `CELERY_BROKER_URL` | redis://redis:6379/0 | Брокер Celery |
-| `CELERY_RESULT_BACKEND` | redis://redis:6379/0 | Result backend |
-| `CELERY_TASK_ALWAYS_EAGER` | False | Синхронный режим (для тестов) |
-| `RATE_LIMIT_PER_MINUTE` | 1000 | Глобальный rate limit |
-| `RATE_LIMIT_PER_USER_PER_MINUTE` | 100 | Per-user rate limit |
-| `MAX_UPLOAD_SIZE_MB` | 100 | Макс. размер модели |
-| `INITIAL_ADMIN_EMAIL` | - | Обязательный email начального админа для docker-compose |
-| `INITIAL_ADMIN_PASSWORD` | - | Обязательный пароль начального админа длиной от 12 символов |
-| `INITIAL_ADMIN_CREDITS` | 10000 | Начальный баланс админа |
-
-Все секреты задаются через `.env` или переменные окружения. Пример: `.env.example`.
-
-## Краткий бизнес-план
-
-**УТП:**
-- Self-service ML inference: пользователь загружает `scikit-learn` модель и сразу получает платный асинхронный API;
-- Pay-per-success: оплата только за успешные предсказания;
-- Loyalty-механика стимулирует активное использование.
-
-**Финмодель:**
-- Доход из продажи кредитов;
-- Базовая цена prediction настраивается через конфиг;
-- Loyalty-скидки снижают цену для активных пользователей, повышая retention;
-- Dashboard и метрики позволяют отслеживать воронку: регистрации -> пополнения -> predictions -> расход кредитов;
-- Можно подключить реальный платёжный шлюз без изменения доменной модели.
+Покрытие пакета `ml_inference_service` не должно падать ниже **70%** (настроено в `[tool.coverage.report]`).

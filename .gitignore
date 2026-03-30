@@ -1,74 +1,16 @@
-# Python
+.venv/
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual Environment
-venv/
-env/
-ENV/
-.venv
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Environment variables
-.env
-.env.local
-
-# Database
-*.db
-*.sqlite
-
-# Alembic
-alembic/versions/*.pyc
-
-# ML Models
-ml_models/
-*.pkl
-*.joblib
-
-# Project runtime
-var/*
-!var/.gitkeep
-
-# Testing
 .pytest_cache/
 .coverage
 htmlcov/
-.tox/
-test.db
-tmp_smoke.db
+.mypy_cache/
+.ruff_cache/
+.env
+*.egg-info/
+dist/
+build/
 
-# Logs
-*.log
-logs/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Local notes
-README_for_me.md
-todo.md
+# Демо-модели sklearn (генерируются scripts/create_sample_sklearn_model.py)
+scripts/sample_models/*.joblib
+scripts/sample_models/*.pkl

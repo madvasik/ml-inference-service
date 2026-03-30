@@ -1,208 +1,98 @@
-x-app-env: &app-env
-  DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-ml_service}
-  SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set}
-  ALGORITHM: ${ALGORITHM:-HS256}
-  ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
-  REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
-  PREDICTION_COST: ${PREDICTION_COST:-10}
-  DEBUG: ${DEBUG:-False}
-  API_V1_PREFIX: ${API_V1_PREFIX:-/api/v1}
-  ML_MODELS_DIR: var/ml_models
-  CELERY_BROKER_URL: redis://redis:6379/0
-  CELERY_RESULT_BACKEND: redis://redis:6379/0
-  RATE_LIMIT_STORAGE_URL: ${RATE_LIMIT_STORAGE_URL:-redis://redis:6379/0}
-  RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-1000}
-  RATE_LIMIT_PER_USER_PER_MINUTE: ${RATE_LIMIT_PER_USER_PER_MINUTE:-100}
-  CORS_ORIGINS: ${CORS_ORIGINS:-*}
-  MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-100}
-  LOG_JSON_FORMAT: ${LOG_JSON_FORMAT:-False}
-  INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:?INITIAL_ADMIN_EMAIL must be set}
-  INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:?INITIAL_ADMIN_PASSWORD must be set}
-  INITIAL_ADMIN_CREDITS: ${INITIAL_ADMIN_CREDITS:-10000}
-  PROMETHEUS_SCRAPE_TOKEN: ${PROMETHEUS_SCRAPE_TOKEN:-}
-
 services:
   postgres:
-    image: postgres:15-alpine
-    container_name: ml_service_postgres
+    image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-      POSTGRES_DB: ${POSTGRES_DB:-ml_service}
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ml_inference_service
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-ml_service}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
       timeout: 5s
       retries: 5
-    networks:
-      - ml_service_network
 
   redis:
     image: redis:7-alpine
-    container_name: ml_service_redis
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - ml_service_network
+    # Порт не публикуем: доступ только из сети compose (избегает конфликта с локальным Redis на :6379)
 
-  backend:
+  api:
     build:
       context: .
-      dockerfile: infra/docker/backend/Dockerfile
-    container_name: ml_service_backend
-    env_file:
-      - .env
-    environment:
-      <<: *app-env
+      dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "8001:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ml_inference_service
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-in-prod}
+      MOCK_TOPUP_SECRET: ${MOCK_TOPUP_SECRET:-dev-mock-topup-secret}
+      MODELS_STORAGE_DIR: /data/models
+      PREDICTION_COST_CREDITS: ${PREDICTION_COST_CREDITS:-1}
     volumes:
-      - ./var/ml_models:/app/var/ml_models
+      - models:/data/models
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-    command: >
-      sh -c "
-        alembic -c backend/alembic.ini upgrade head &&
-        uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
-      "
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - ml_service_network
+        condition: service_started
 
-  celery:
+  worker:
     build:
       context: .
-      dockerfile: infra/docker/celery/Dockerfile
-    container_name: ml_service_celery
-    env_file:
-      - .env
+      dockerfile: Dockerfile.worker
     environment:
-      <<: *app-env
-      ENABLE_METRICS_SERVER: "true"
-      METRICS_PORT: "9091"
-      PROMETHEUS_MULTIPROC_DIR: "/tmp/prometheus_multiproc_dir"
-    ports:
-      - "9091:9091"
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ml_inference_service
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      MODELS_STORAGE_DIR: /data/models
+      PREDICTION_COST_CREDITS: ${PREDICTION_COST_CREDITS:-1}
     volumes:
-      - ./var/ml_models:/app/var/ml_models
+      - models:/data/models
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      backend:
-        condition: service_healthy
-    networks:
-      - ml_service_network
-
-  celery-beat:
-    build:
-      context: .
-      dockerfile: infra/docker/celery/Dockerfile
-    container_name: ml_service_celery_beat
-    env_file:
-      - .env
-    environment:
-      <<: *app-env
-    command: celery -A backend.app.worker:celery_app beat --loglevel=info
-    volumes:
-      - ./var/ml_models:/app/var/ml_models
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      backend:
-        condition: service_healthy
-    networks:
-      - ml_service_network
-
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: ml_service_prometheus
-    ports:
-      - "9090:9090"
-    env_file:
-      - .env
-    volumes:
-      - ./infra/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
-    command:
-      - /bin/sh
-      - -c
-      - |
-        mkdir -p /etc/prometheus/secrets
-        printf '%s' "$$PROMETHEUS_SCRAPE_TOKEN" > /etc/prometheus/secrets/metrics_token
-        exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus
-    depends_on:
-      - backend
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - ml_service_network
-
-  grafana:
-    image: grafana/grafana:latest
-    container_name: ml_service_grafana
-    ports:
-      - "3000:3000"
-    environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
-      GF_USERS_ALLOW_SIGN_UP: "false"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./infra/monitoring/grafana/provisioning:/etc/grafana/provisioning
-      - ./infra/monitoring/grafana/dashboards:/etc/grafana/dashboards
-    depends_on:
-      - prometheus
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - ml_service_network
+        condition: service_started
 
   streamlit:
     build:
       context: .
-      dockerfile: infra/docker/streamlit/Dockerfile
-    container_name: ml_service_streamlit
-    environment:
-      BASE_URL: http://backend:8000
+      dockerfile: Dockerfile.streamlit
     ports:
-      - "8501:8501"
+      - "8502:8501"
+    environment:
+      API_URL: http://api:8000/api
+      MOCK_TOPUP_SECRET: ${MOCK_TOPUP_SECRET:-dev-mock-topup-secret}
     depends_on:
-      backend:
-        condition: service_healthy
-    networks:
-      - ml_service_network
+      - api
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "19090:9090"
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_DEFAULT_THEME: dark
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
 
 volumes:
-  postgres_data:
-  prometheus_data:
-  grafana_data:
-
-networks:
-  ml_service_network:
-    driver: bridge
+  pgdata:
+  models:
