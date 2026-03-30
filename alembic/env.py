@@ -6,7 +6,7 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
-# Пакет лежит в src/; при `alembic` без установленного editable — добавляем src в path
+# Пакет в src/; при alembic без editable — добавляем src в path
 _root = os.path.dirname(os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(_root, "src"))
 
