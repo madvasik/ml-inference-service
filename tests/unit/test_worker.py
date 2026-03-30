@@ -30,7 +30,6 @@ def test_worker_completes_prediction_and_debits_once(mock_predict, mock_load_mod
     mock_load_model.return_value = Mock()
     mock_predict.return_value = {"prediction": 1}
 
-    execute_prediction._db = db_session
     result = execute_prediction.run(prediction_id=prediction.id)
     duplicate = execute_prediction.run(prediction_id=prediction.id)
 
@@ -50,7 +49,6 @@ def test_worker_marks_prediction_failed_when_balance_is_gone(mock_predict, mock_
     mock_load_model.return_value = Mock()
     mock_predict.return_value = {"prediction": 1}
 
-    execute_prediction._db = db_session
     result = execute_prediction.run(prediction_id=prediction.id)
 
     db_session.refresh(prediction)
@@ -63,14 +61,13 @@ def test_worker_marks_prediction_failed_when_balance_is_gone(mock_predict, mock_
 def test_worker_keeps_credits_when_model_load_fails(_mock_load_model, db_session, test_user, test_ml_model):
     prediction = _create_prediction(db_session, test_user, test_ml_model)
 
-    execute_prediction._db = db_session
     result = execute_prediction.run(prediction_id=prediction.id)
 
     db_session.refresh(prediction)
     balance = db_session.query(Balance).filter(Balance.user_id == test_user.id).one()
     assert result["status"] == "failed"
     assert prediction.status == PredictionStatus.FAILED
-    assert "broken model" in prediction.failure_reason
+    assert prediction.failure_reason == "execution_error"
     assert balance.credits == 1000
     assert db_session.query(Transaction).count() == 0
 
@@ -92,7 +89,6 @@ def test_monthly_loyalty_task_recalculates_users(db_session, test_user, test_ml_
     )
     db_session.commit()
 
-    recalculate_monthly_loyalty._db = None
     result = recalculate_monthly_loyalty.run()
 
     assert result["updated_users"] >= 1

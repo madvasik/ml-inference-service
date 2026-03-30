@@ -12,7 +12,8 @@ import backend.app.db as db_module
 from backend.app.db import get_db
 from backend.app.loyalty import refresh_loyalty_metrics
 from backend.app.metrics import active_users
-from backend.app.models import Prediction
+from backend.app.models import Prediction, User
+from backend.app.security import get_current_admin
 
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,10 @@ def metrics():
 
 
 @api_router.post("/metrics/update-active-users")
-def update_active_users_metric(db: Session = Depends(get_db)):
+def update_active_users_metric(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin),
+):
+    del current_user
     unique_users = _refresh_runtime_metrics(db)
     return {"active_users": unique_users, "updated_at": datetime.now(timezone.utc).isoformat()}

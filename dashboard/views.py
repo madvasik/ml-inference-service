@@ -13,7 +13,10 @@ except ModuleNotFoundError:
 def render_users_tab(api_client: APIClient, token: str) -> None:
     st.header("Список всех пользователей")
 
-    users = api_client.fetch_users(token)
+    users, auth_err = api_client.fetch_users(token)
+    if auth_err == APIClient.AUTH_ERROR:
+        st.error("Сессия истекла или недостаточно прав. Выйдите и войдите снова.")
+        return
     if not users:
         st.warning("Пользователи не найдены")
         return
@@ -79,11 +82,14 @@ def render_predictions_tab(api_client: APIClient, token: str) -> None:
             help="Введите Model ID для фильтрации (0 = без фильтра)",
         )
 
-    predictions_data = api_client.fetch_predictions(
+    predictions_data, auth_err = api_client.fetch_predictions(
         token,
         user_id=int(filter_user_id) if filter_user_id > 0 else None,
         model_id=int(filter_model_id) if filter_model_id > 0 else None,
     )
+    if auth_err == APIClient.AUTH_ERROR:
+        st.error("Сессия истекла или недостаточно прав. Выйдите и войдите снова.")
+        return
     predictions = predictions_data.get("predictions", [])
     total = predictions_data.get("total", 0)
 
@@ -151,7 +157,10 @@ def render_predictions_tab(api_client: APIClient, token: str) -> None:
 def render_payments_tab(api_client: APIClient, token: str) -> None:
     st.header("Платежи")
 
-    payments_data = api_client.fetch_payments(token)
+    payments_data, auth_err = api_client.fetch_payments(token)
+    if auth_err == APIClient.AUTH_ERROR:
+        st.error("Сессия истекла или недостаточно прав. Выйдите и войдите снова.")
+        return
     payments = payments_data.get("payments", [])
     total = payments_data.get("total", 0)
 
@@ -195,10 +204,13 @@ def render_transactions_tab(api_client: APIClient, token: str) -> None:
         key="filter_user_id_transactions",
         help="Введите User ID для фильтрации транзакций (0 = без фильтра)",
     )
-    transactions_data = api_client.fetch_transactions(
+    transactions_data, auth_err = api_client.fetch_transactions(
         token,
         user_id=int(filter_user_id) if filter_user_id > 0 else None,
     )
+    if auth_err == APIClient.AUTH_ERROR:
+        st.error("Сессия истекла или недостаточно прав. Выйдите и войдите снова.")
+        return
     transactions = transactions_data.get("transactions", [])
     total = transactions_data.get("total", 0)
 
@@ -242,10 +254,19 @@ def render_transactions_tab(api_client: APIClient, token: str) -> None:
 def render_stats_tab(api_client: APIClient, token: str) -> None:
     st.header("Общая статистика")
 
-    users = api_client.fetch_users(token)
-    predictions_data = api_client.fetch_predictions(token)
+    users, auth_err = api_client.fetch_users(token)
+    if auth_err == APIClient.AUTH_ERROR:
+        st.error("Сессия истекла или недостаточно прав. Выйдите и войдите снова.")
+        return
+    predictions_data, auth_err = api_client.fetch_predictions(token)
+    if auth_err == APIClient.AUTH_ERROR:
+        st.error("Сессия истекла или недостаточно прав. Выйдите и войдите снова.")
+        return
     predictions = predictions_data.get("predictions", [])
-    payments_data = api_client.fetch_payments(token)
+    payments_data, auth_err = api_client.fetch_payments(token)
+    if auth_err == APIClient.AUTH_ERROR:
+        st.error("Сессия истекла или недостаточно прав. Выйдите и войдите снова.")
+        return
     payments = payments_data.get("payments", [])
 
     if not users or not predictions:

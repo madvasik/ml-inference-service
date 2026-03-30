@@ -1,5 +1,6 @@
 import os
 import tempfile
+import time
 
 import numpy as np
 import pytest
@@ -18,6 +19,31 @@ import backend.app.middleware as middleware_module
 import backend.app.worker as worker_module
 from backend.app.models import Balance, MLModel, User, UserRole
 from backend.app.security import create_access_token, get_password_hash
+
+
+class InMemoryRateLimitStore:
+    """Test double for Redis-backed rate limiting (see `override_rate_limit_store`)."""
+
+    def __init__(self):
+        self._buckets: dict[str, tuple[int, int]] = {}
+
+    def increment(self, key: str, limit: int, window: int) -> tuple[bool, int, int]:
+        current_time = int(time.time())
+        window_start = current_time - (current_time % window)
+        reset_at = window_start + window
+        bucket_key = f"{window_start}:{key}"
+        count, _ = self._buckets.get(bucket_key, (0, reset_at))
+        count += 1
+        self._buckets = {
+            existing_key: value
+            for existing_key, value in self._buckets.items()
+            if value[1] > current_time
+        }
+        self._buckets[bucket_key] = (count, reset_at)
+        allowed = count <= limit
+        remaining = max(0, limit - count)
+        return allowed, remaining, reset_at
+
 
 @pytest.fixture(scope="function")
 def testing_session_factory(tmp_path):
@@ -49,7 +75,7 @@ def override_rate_limit_store(monkeypatch):
     monkeypatch.setattr(
         middleware_module,
         "RedisRateLimitStore",
-        middleware_module.InMemoryRateLimitStore,
+        InMemoryRateLimitStore,
     )
     yield
 

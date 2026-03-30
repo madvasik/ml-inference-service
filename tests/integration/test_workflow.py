@@ -2,7 +2,7 @@ import json
 
 from unittest.mock import Mock, patch
 
-from backend.app.models import Prediction, PredictionStatus, Transaction
+from backend.app.models import Balance, Prediction, PredictionStatus, Transaction
 from backend.app.worker import execute_prediction
 from tests.helpers import auth_headers
 
@@ -38,10 +38,9 @@ def test_full_workflow_charges_only_after_success(client, db_session, test_model
     assert create_response.status_code == 202
     prediction_id = create_response.json()["prediction_id"]
 
-    balance_before_worker = client.get("/api/v1/billing/balance", headers=headers)
-    assert balance_before_worker.json()["credits"] == 100
+    balance_after_enqueue = client.get("/api/v1/billing/balance", headers=headers)
+    assert balance_after_enqueue.json()["credits"] == 90
 
-    execute_prediction._db = db_session
     worker_result = execute_prediction.run(prediction_id=prediction_id)
     assert worker_result["status"] == "completed"
 
@@ -56,7 +55,7 @@ def test_full_workflow_charges_only_after_success(client, db_session, test_model
     assert transaction_count == 2
 
 
-def test_queue_failure_marks_prediction_failed_without_debit(client, db_session, test_user, test_ml_model, access_token_for):
+def test_queue_failure_marks_prediction_failed_and_refunds(client, db_session, test_user, test_ml_model, access_token_for):
     headers = auth_headers(access_token_for(test_user))
 
     with patch("backend.app.api.predictions.execute_prediction.delay", side_effect=RuntimeError("queue down")):
@@ -70,7 +69,9 @@ def test_queue_failure_marks_prediction_failed_without_debit(client, db_session,
     prediction = db_session.query(Prediction).filter(Prediction.user_id == test_user.id).order_by(Prediction.id.desc()).one()
     assert prediction.status == PredictionStatus.FAILED
     assert prediction.failure_reason == "queue_unavailable"
-    assert db_session.query(Transaction).filter(Transaction.user_id == test_user.id).count() == 0
+    balance = db_session.query(Balance).filter(Balance.user_id == test_user.id).one()
+    assert balance.credits == 1000
+    assert db_session.query(Transaction).filter(Transaction.user_id == test_user.id).count() == 2
 
 
 def test_worker_failure_keeps_balance_unchanged(client, db_session, test_user, test_ml_model, access_token_for):
@@ -84,7 +85,6 @@ def test_worker_failure_keeps_balance_unchanged(client, db_session, test_user, t
         )
     prediction_id = create_response.json()["prediction_id"]
 
-    execute_prediction._db = db_session
     with patch("backend.app.worker.load_model", side_effect=ValueError("broken model")):
         result = execute_prediction.run(prediction_id=prediction_id)
 
@@ -94,4 +94,4 @@ def test_worker_failure_keeps_balance_unchanged(client, db_session, test_user, t
     assert result["status"] == "failed"
     assert balance_response.json()["credits"] == 1000
     assert prediction_response.json()["status"] == PredictionStatus.FAILED.value
-    assert db_session.query(Transaction).filter(Transaction.user_id == test_user.id).count() == 0
+    assert db_session.query(Transaction).filter(Transaction.user_id == test_user.id).count() == 2

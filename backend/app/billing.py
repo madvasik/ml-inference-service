@@ -83,6 +83,31 @@ def charge_prediction(
     return True, transaction
 
 
+def refund_prediction_if_debited(
+    db: Session,
+    prediction: Prediction,
+    *,
+    commit: bool = True,
+) -> bool:
+    """If a debit exists for this prediction, issue a matching credit refund (idempotent)."""
+    if get_prediction_debit_transaction(db, prediction.id) is None:
+        return False
+    refund_desc = f"Refund: prediction #{prediction.id}"
+    existing = (
+        db.query(Transaction)
+        .filter(
+            Transaction.user_id == prediction.user_id,
+            Transaction.type == TransactionType.CREDIT,
+            Transaction.description == refund_desc,
+        )
+        .first()
+    )
+    if existing is not None:
+        return False
+    add_credits(db, prediction.user_id, prediction.credits_spent, description=refund_desc, commit=commit)
+    return True
+
+
 def add_credits(
     db: Session,
     user_id: int,

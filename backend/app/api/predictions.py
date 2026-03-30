@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from backend.app.billing import build_prediction_cost_snapshot, get_balance
+from backend.app.billing import build_prediction_cost_snapshot, charge_prediction, get_balance, refund_prediction_if_debited
 from backend.app.config import settings
 from backend.app.db import get_db
 from backend.app.loyalty import get_loyalty_snapshot
@@ -40,12 +40,6 @@ def create_prediction(
         settings.prediction_cost,
         loyalty_snapshot.discount_percent,
     )
-    balance = get_balance(db, current_user.id)
-    if balance < final_cost:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail=f"Insufficient balance. Required: {final_cost}, Available: {balance}",
-        )
 
     prediction = Prediction(
         user_id=current_user.id,
@@ -58,6 +52,18 @@ def create_prediction(
         credits_spent=final_cost,
     )
     db.add(prediction)
+    db.flush()
+    success, _ = charge_prediction(
+        db,
+        prediction,
+        description=f"Prediction #{prediction.id} (queued)",
+    )
+    if not success:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Insufficient balance. Required: {final_cost}, Available: {get_balance(db, current_user.id)}",
+        )
     db.commit()
     db.refresh(prediction)
 
@@ -69,6 +75,7 @@ def create_prediction(
     except Exception:
         prediction.status = PredictionStatus.FAILED
         prediction.failure_reason = "queue_unavailable"
+        refund_prediction_if_debited(db, prediction, commit=False)
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

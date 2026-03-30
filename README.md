@@ -143,7 +143,7 @@ docker compose up -d --build
 | ReDoc | http://localhost:8000/redoc |
 | Dashboard | http://localhost:8501 |
 | Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3000 (admin/admin) |
+| Grafana | http://localhost:3000 (логин/пароль: переменные `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`, по умолчанию `admin`/`admin`) |
 
 ### Локальная smoke-проверка без Docker
 
@@ -190,6 +190,7 @@ make smoke
 - `GET /` — корневой endpoint
 - `GET /health` — health check (БД + схема)
 - `GET /metrics` — Prometheus метрики
+- `POST /api/v1/metrics/update-active-users` — пересчёт метрик активных пользователей (требуется роль ADMIN)
 
 ## Как пользоваться API
 
@@ -238,22 +239,23 @@ curl http://localhost:8000/api/v1/predictions/1 \
 
 - `1 amount = 1 credit`;
 - пополнение создаёт `payment` + `credit transaction` + обновляет `balance`;
-- списание за prediction выполняется **только после успешного inference**;
-- транзакция по prediction уникальна по `prediction_id` — повторный запуск не спишет кредиты второй раз (идемпотентность).
+- списание за prediction выполняется **при успешном `POST /predictions`** (в одной транзакции с проверкой баланса через `with_for_update`); воркер не дублирует списание, если debit для данного `prediction_id` уже существует (идемпотентность).
+- транзакция по prediction уникальна по `prediction_id` — повторный запуск воркера не спишет кредиты второй раз.
 
 ### Атомарность и обработка ошибок
 
 - `create_payment()` выполняет payment + transaction + balance update в одной DB-транзакции. При ошибке — полный rollback.
-- Worker блокирует баланс через `with_for_update()` перед списанием (защита от race conditions).
-- Если очередь недоступна при постановке задачи — prediction помечается `failed` с причиной `queue_unavailable`, списания нет.
-- Если inference падает — prediction получает `failed`, баланс не меняется.
-- Если к моменту списания кредитов не хватает — prediction получает `failed` с причиной `insufficient_credits`.
+- `POST /predictions` атомарно проверяет баланс и создаёт debit; параллельные запросы сериализуются блокировкой строки баланса.
+- Worker при списании также использует `with_for_update()` для сценариев без предварительного debit (напрямую из БД).
+- Если очередь недоступна при постановке задачи — prediction помечается `failed` с причиной `queue_unavailable`, выполняется **возврат кредитов** (refund), если debit уже был создан.
+- Если inference падает — prediction получает `failed`, при наличии debit выполняется **возврат кредитов**.
+- Если к моменту списания в воркере кредитов не хватает (редкий случай без предварительного debit) — prediction получает `failed` с причиной `insufficient_credits`.
 
 ## Как работает асинхронная обработка
 
 - HTTP API **не делает inference** внутри запроса.
-- `POST /predictions` валидирует вход, сохраняет snapshot цены и ставит задачу в Celery.
-- Celery worker (`execute_prediction` в `worker.py`) загружает модель, делает predict, списывает кредиты.
+- `POST /predictions` валидирует вход, сохраняет snapshot цены, **списывает кредиты** и ставит задачу в Celery.
+- Celery worker (`execute_prediction` в `worker.py`) загружает модель, делает predict; повторное списание не выполняется, если API уже создал debit.
 - Celery beat раз в месяц запускает `recalculate_monthly_loyalty`.
 
 ## Loyalty / Discount система

@@ -16,28 +16,6 @@ from backend.app.metrics import prediction_errors_total, prediction_requests_tot
 logger = logging.getLogger(__name__)
 
 
-class InMemoryRateLimitStore:
-    def __init__(self):
-        self._buckets: dict[str, tuple[int, int]] = {}
-
-    def increment(self, key: str, limit: int, window: int) -> tuple[bool, int, int]:
-        current_time = int(time.time())
-        window_start = current_time - (current_time % window)
-        reset_at = window_start + window
-        bucket_key = f"{window_start}:{key}"
-        count, _ = self._buckets.get(bucket_key, (0, reset_at))
-        count += 1
-        self._buckets = {
-            existing_key: value
-            for existing_key, value in self._buckets.items()
-            if value[1] > current_time
-        }
-        self._buckets[bucket_key] = (count, reset_at)
-        allowed = count <= limit
-        remaining = max(0, limit - count)
-        return allowed, remaining, reset_at
-
-
 class RedisRateLimitStore:
     def __init__(self, redis_client: Redis | None = None, redis_url: str | None = None):
         self._redis = redis_client or Redis.from_url(

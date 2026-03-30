@@ -39,7 +39,7 @@ def test_prediction_requires_balance(client, access_token_for, test_user, test_m
     assert response.status_code == 402
 
 
-def test_queue_failure_marks_prediction_failed_without_transaction(client, access_token_for, test_user, test_ml_model, db_session):
+def test_queue_failure_marks_prediction_failed_and_refunds(client, access_token_for, test_user, test_ml_model, db_session):
     with patch("backend.app.api.predictions.execute_prediction.delay", side_effect=RuntimeError("queue down")):
         response = client.post(
             "/api/v1/predictions",
@@ -51,7 +51,10 @@ def test_queue_failure_marks_prediction_failed_without_transaction(client, acces
     prediction = db_session.query(Prediction).filter(Prediction.user_id == test_user.id).order_by(Prediction.id.desc()).one()
     assert prediction.status == PredictionStatus.FAILED
     assert prediction.failure_reason == "queue_unavailable"
-    assert db_session.query(Transaction).filter(Transaction.user_id == test_user.id).count() == 0
+    balance = db_session.query(Balance).filter(Balance.user_id == test_user.id).one()
+    assert balance.credits == 1000
+    txs = db_session.query(Transaction).filter(Transaction.user_id == test_user.id).all()
+    assert len(txs) == 2
 
 
 def test_prediction_endpoints_are_scoped_to_owner(client, access_token_for, admin_user, test_ml_model):

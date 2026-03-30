@@ -8,8 +8,6 @@ PAGE_ICON = "📊"
 LAYOUT = "wide"
 SIDEBAR_STATE = "expanded"
 BASE_URL = os.getenv("BASE_URL", "http://backend:8000")
-DEFAULT_ADMIN_EMAIL = os.getenv("INITIAL_ADMIN_EMAIL", "")
-DEFAULT_ADMIN_PASSWORD = os.getenv("INITIAL_ADMIN_PASSWORD", "")
 API_TIMEOUT_SECONDS = 5
 
 

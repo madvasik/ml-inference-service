@@ -12,6 +12,10 @@ except ModuleNotFoundError:
 
 
 class APIClient:
+    """Second value in fetch_* tuples is AUTH_ERROR when token is rejected (401/403)."""
+
+    AUTH_ERROR = "auth"
+
     def __init__(self, base_url: str = BASE_URL, timeout: int = API_TIMEOUT_SECONDS):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
@@ -43,7 +47,7 @@ class APIClient:
         except requests.RequestException as exc:
             return False, None, None, f"Ошибка подключения к API: {exc}"
 
-    def fetch_users(self, token: str) -> list[dict[str, Any]]:
+    def fetch_users(self, token: str) -> tuple[list[dict[str, Any]], str | None]:
         try:
             response = requests.get(
                 f"{self.base_url}/api/v1/admin/users",
@@ -51,24 +55,27 @@ class APIClient:
                 timeout=self.timeout,
             )
             if response.status_code == 200:
-                return response.json()
-            return []
+                return response.json(), None
+            if response.status_code in (401, 403):
+                return [], self.AUTH_ERROR
+            return [], None
         except requests.RequestException as exc:
             st.error(f"Ошибка получения пользователей: {exc}")
-            return []
+            return [], None
 
     def fetch_predictions(
         self,
         token: str,
         user_id: int | None = None,
         model_id: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], str | None]:
         params: dict[str, Any] = {}
         if user_id is not None:
             params["user_id"] = user_id
         if model_id is not None:
             params["model_id"] = model_id
 
+        empty: dict[str, Any] = {"predictions": [], "total": 0}
         try:
             response = requests.get(
                 f"{self.base_url}/api/v1/admin/predictions",
@@ -77,17 +84,20 @@ class APIClient:
                 timeout=self.timeout,
             )
             if response.status_code == 200:
-                return response.json()
-            return {"predictions": [], "total": 0}
+                return response.json(), None
+            if response.status_code in (401, 403):
+                return empty, self.AUTH_ERROR
+            return empty, None
         except requests.RequestException as exc:
             st.error(f"Ошибка получения предсказаний: {exc}")
-            return {"predictions": [], "total": 0}
+            return empty, None
 
-    def fetch_transactions(self, token: str, user_id: int | None = None) -> dict[str, Any]:
+    def fetch_transactions(self, token: str, user_id: int | None = None) -> tuple[dict[str, Any], str | None]:
         params: dict[str, Any] = {}
         if user_id is not None:
             params["user_id"] = user_id
 
+        empty: dict[str, Any] = {"transactions": [], "total": 0}
         try:
             response = requests.get(
                 f"{self.base_url}/api/v1/admin/transactions",
@@ -96,17 +106,20 @@ class APIClient:
                 timeout=self.timeout,
             )
             if response.status_code == 200:
-                return response.json()
-            return {"transactions": [], "total": 0}
+                return response.json(), None
+            if response.status_code in (401, 403):
+                return empty, self.AUTH_ERROR
+            return empty, None
         except requests.RequestException as exc:
             st.error(f"Ошибка получения транзакций: {exc}")
-            return {"transactions": [], "total": 0}
+            return empty, None
 
-    def fetch_payments(self, token: str, user_id: int | None = None) -> dict[str, Any]:
+    def fetch_payments(self, token: str, user_id: int | None = None) -> tuple[dict[str, Any], str | None]:
         params: dict[str, Any] = {}
         if user_id is not None:
             params["user_id"] = user_id
 
+        empty: dict[str, Any] = {"payments": [], "total": 0}
         try:
             response = requests.get(
                 f"{self.base_url}/api/v1/admin/payments",
@@ -115,8 +128,10 @@ class APIClient:
                 timeout=self.timeout,
             )
             if response.status_code == 200:
-                return response.json()
-            return {"payments": [], "total": 0}
+                return response.json(), None
+            if response.status_code in (401, 403):
+                return empty, self.AUTH_ERROR
+            return empty, None
         except requests.RequestException as exc:
             st.error(f"Ошибка получения платежей: {exc}")
-            return {"payments": [], "total": 0}
+            return empty, None

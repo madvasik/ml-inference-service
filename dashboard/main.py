@@ -2,12 +2,7 @@ import streamlit as st
 
 try:
     from dashboard.api_client import APIClient
-    from dashboard.config import (
-        DEFAULT_ADMIN_EMAIL,
-        DEFAULT_ADMIN_PASSWORD,
-        PAGE_TITLE,
-        configure_page,
-    )
+    from dashboard.config import PAGE_TITLE, configure_page
     from dashboard.views import (
         render_payments_tab,
         render_predictions_tab,
@@ -17,7 +12,7 @@ try:
     )
 except ModuleNotFoundError:
     from api_client import APIClient
-    from config import DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD, PAGE_TITLE, configure_page
+    from config import PAGE_TITLE, configure_page
     from views import (
         render_payments_tab,
         render_predictions_tab,
@@ -43,8 +38,8 @@ def render_sidebar(api_client: APIClient) -> None:
     with st.sidebar:
         st.title("🔐 Вход")
         if st.session_state.token is None:
-            email = st.text_input("Email", value=DEFAULT_ADMIN_EMAIL)
-            password = st.text_input("Пароль", type="password", value=DEFAULT_ADMIN_PASSWORD)
+            email = st.text_input("Email", value="")
+            password = st.text_input("Пароль", type="password", value="")
             if st.button("Войти", type="primary"):
                 success, token, user, error_message = api_client.login(email, password)
                 if success and token and user:

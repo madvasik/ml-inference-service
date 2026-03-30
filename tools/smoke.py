@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import pickle
 import shutil
 import subprocess
 import sys
@@ -9,9 +8,10 @@ import tempfile
 import time
 from pathlib import Path
 
+import numpy as np
 import requests
 from sklearn.ensemble import RandomForestClassifier
-import numpy as np
+from skops.io import dump as skops_dump
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -71,7 +71,8 @@ def _build_env() -> dict[str, str]:
     env.update(
         {
             "DATABASE_URL": f"sqlite:///{SMOKE_DB}",
-            "SECRET_KEY": "smoke-secret",
+            # Must satisfy backend Settings (min 32 chars, not a known placeholder).
+            "SECRET_KEY": "smoke-test-secret-key-minimum-32-chars-long!",
             "DEBUG": "false",
             "CELERY_TASK_ALWAYS_EAGER": "true",
             "CELERY_BROKER_URL": "memory://",
@@ -97,7 +98,7 @@ def _init_schema(env: dict[str, str]) -> None:
         [
             sys.executable,
             "-c",
-            "from backend.app.db import Base, engine; Base.metadata.create_all(bind=engine)",
+            "from backend.app.db import Base, get_engine; Base.metadata.create_all(bind=get_engine())",
         ],
         cwd=PROJECT_ROOT,
         env=env,
@@ -131,15 +132,18 @@ def _exercise_backend() -> None:
     model = RandomForestClassifier(n_estimators=5, random_state=42)
     model.fit(X, y)
 
-    with tempfile.NamedTemporaryFile(suffix=".pkl") as temp_file:
-        pickle.dump(model, temp_file)
+    with tempfile.NamedTemporaryFile(suffix=".skops") as temp_file:
+        skops_dump(model, temp_file.name)
         temp_file.flush()
         with open(temp_file.name, "rb") as model_file:
             upload_response = requests.post(
                 f"{BACKEND_URL}/api/v1/models/upload",
                 headers=headers,
-                data={"model_name": "smoke-model"},
-                files={"file": ("smoke.pkl", model_file, "application/octet-stream")},
+                data={
+                    "model_name": "smoke-model",
+                    "feature_names": '["feature1", "feature2"]',
+                },
+                files={"file": ("smoke.skops", model_file, "application/octet-stream")},
                 timeout=20,
             )
         upload_response.raise_for_status()

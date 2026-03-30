@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI):
             if admin_user is not None:
                 logger.info("Initial admin ensured: %s", admin_user.email)
     except Exception as exc:
-        logger.warning("Startup bootstrap failed: %s", exc)
+        logger.error("Startup bootstrap failed: %s", exc, exc_info=True)
     finally:
         if db is not None:
             db.close()
@@ -89,10 +89,12 @@ def create_app() -> FastAPI:
         if "," in settings.cors_origins
         else (settings.cors_origins.split() if settings.cors_origins != "*" else ["*"])
     )
+    # Browsers reject credentialed requests when Allow-Origin is '*' — disable credentials only in that case.
+    cors_allow_credentials = cors_origins != ["*"]
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
-        allow_credentials=True,
+        allow_credentials=cors_allow_credentials,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["*"],
         expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],

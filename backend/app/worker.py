@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 if os.getenv("PROMETHEUS_MULTIPROC_DIR"):
     Path(os.environ["PROMETHEUS_MULTIPROC_DIR"]).mkdir(parents=True, exist_ok=True)
 
-from backend.app.billing import charge_prediction
+from backend.app.billing import charge_prediction, refund_prediction_if_debited
 from backend.app.config import settings
 from backend.app.db import SessionLocal
 from backend.app.loyalty import recalculate_loyalty_tiers
@@ -63,21 +63,6 @@ celery_app.conf.update(
 )
 
 
-class DatabaseTask(Task):
-    _db: Session = None
-
-    @property
-    def db(self):
-        if self._db is None:
-            self._db = SessionLocal()
-        return self._db
-
-    def after_return(self, *args, **kwargs):
-        if self._db is not None:
-            self._db.close()
-            self._db = None
-
-
 def _mark_prediction_failed(db: Session, prediction_id: int, reason: str) -> Prediction | None:
     prediction = db.query(Prediction).filter(Prediction.id == prediction_id).first()
     if prediction is None:
@@ -85,19 +70,20 @@ def _mark_prediction_failed(db: Session, prediction_id: int, reason: str) -> Pre
     prediction.status = PredictionStatus.FAILED
     prediction.failure_reason = reason
     prediction.completed_at = None
+    refund_prediction_if_debited(db, prediction, commit=False)
     db.commit()
     return prediction
 
 
 @celery_app.task(
     bind=True,
-    base=DatabaseTask,
+    base=Task,
     name="predictions.execute_prediction",
     max_retries=3,
     default_retry_delay=60,
 )
 def execute_prediction(self, prediction_id: int):
-    db = self.db
+    db = SessionLocal()
     start_time = time.time()
     model_id_str = "unknown"
 
@@ -170,10 +156,12 @@ def execute_prediction(self, prediction_id: int):
     except Exception as exc:
         db.rollback()
         logger.error("Error executing prediction %s: %s", prediction_id, exc, exc_info=True)
-        _mark_prediction_failed(db, prediction_id, str(exc))
+        _mark_prediction_failed(db, prediction_id, "execution_error")
         prediction_requests_total.labels(status="failed", model_id=model_id_str).inc()
         prediction_errors_total.labels(error_type="execution_error").inc()
-        return {"status": "failed", "error": str(exc)}
+        return {"status": "failed", "error": "execution_error"}
+    finally:
+        db.close()
 
 
 @celery_app.task(name="loyalty.recalculate_monthly")
